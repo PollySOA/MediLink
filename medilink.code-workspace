@@ -1,0 +1,46 @@
+{
+  "folders": [
+    { "name": "backend", "path": "./backend" },
+    { "name": "frontend", "path": "./frontend" }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.terminal.useEnvFile": true,
+    "python.envFile": "${workspaceFolder:backend}/.env",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "[typescript]": { "editor.tabSize": 2 },
+    "[typescriptreact]": { "editor.tabSize": 2 }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "FastAPI backend",
+        "type": "python",
+        "request": "launch",
+        "module": "uvicorn",
+        "args": ["main:app", "--reload", "--port", "8000"],
+        "cwd": "${workspaceFolder}/backend",
+        "envFile": "${workspaceFolder}/backend/.env"
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Start backend",
+        "type": "shell",
+        "command": "source .venv/bin/activate && uvicorn main:app --reload",
+        "options": { "cwd": "${workspaceFolder}/backend" }
+      },
+      {
+        "label": "Start frontend",
+        "type": "shell",
+        "command": "npm run dev",
+        "options": { "cwd": "${workspaceFolder}/frontend" }
+      }
+    ]
+  }
+}
