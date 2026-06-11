@@ -1,0 +1,14 @@
+# Local Python environments
+.venv/
+backend/.venv/
+
+# Local environment variables (secrets)
+backend/.env
+
+# Frontend dependencies and build artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Common logs/cache
+*.log
+.DS_Store
