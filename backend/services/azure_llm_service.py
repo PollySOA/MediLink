@@ -40,6 +40,15 @@ _RECOMMENDED_ACTIONS_PREFIX = (
     "Si te quedan dudas clinicas importantes, comentalas con tu medico para recibir la explicacion adaptada a tu caso."
 )
 
+_AVATAR_DISCLAIMER_ES = (
+    "\n\n*Nota: Esta información es exclusivamente orientativa y una traducción humana de su informe médico. "
+    "No sustituye en ningún caso el criterio, diagnóstico o las indicaciones de su médico tratado.*"
+)
+_AVATAR_DISCLAIMER_EN = (
+    "\n\n*Note: This information is for guidance only and a human translation of your medical report. "
+    "It does not replace the criteria, diagnosis, or indications of your treating physician.*"
+)
+
 _MEDICAL_GLOSSARY = {
     "lesion": "lesion (zona danada o afectada)",
     "lesiones": "lesiones (zonas danadas o afectadas)",
@@ -232,6 +241,63 @@ def _normalize_user_text(text: str) -> str:
     return normalized
 
 
+def _is_probably_english(text: str) -> bool:
+    normalized = _strip_accents(text.lower())
+    english_tokens = {
+        "the", "and", "what", "why", "how", "can", "could", "would", "should", "please", "report",
+        "findings", "fissure", "fissures", "explain", "meaning", "medical", "doctor", "patient", "pain",
+        "knee", "joint", "note", "thank", "thanks", "hello",
+    }
+    tokens = set(re.findall(r"[a-z]+", normalized))
+    return len(tokens & english_tokens) >= 2
+
+
+def _ensure_avatar_disclaimer(text: str, *, english: bool) -> str:
+    if not text.strip():
+        return (_AVATAR_DISCLAIMER_EN if english else _AVATAR_DISCLAIMER_ES).strip()
+
+    normalized = _strip_accents(text.lower())
+    has_es_disclaimer = "no sustituye en ningun caso el criterio" in normalized
+    has_en_disclaimer = "it does not replace the criteria" in normalized
+    if has_es_disclaimer or has_en_disclaimer:
+        return text
+
+    return text.rstrip() + (_AVATAR_DISCLAIMER_EN if english else _AVATAR_DISCLAIMER_ES)
+
+
+def _build_safe_avatar_voice_en(user_message: str, patient_context: dict) -> str:
+    patient_name = _patient_name(patient_context)
+    official_report = patient_context.get("official_report") or AVATAR_ELENA_OFFICIAL_REPORT
+    specialty = patient_context.get("specialty") or "your specialty"
+    analysis = _analyze_avatar_question(user_message, official_report)
+
+    if analysis["confirms_resolved"] and not analysis["off_topic"]:
+        return (
+            f"{patient_name}, I am glad this is clearer now. "
+            "If this helped you, you can rate Elena's support from 1 to 5."
+        )
+
+    if analysis["asks_for_restricted_advice"] or analysis["off_topic"]:
+        return (
+            f"{patient_name}, I can only provide guidance about what is explicitly written in your report. "
+            "If you want, tell me which specific part of the report you want me to explain in simple words."
+        )
+
+    if analysis["is_greeting"]:
+        return (
+            f"Hello {patient_name}, I am here to help you understand your {specialty} report calmly and clearly. "
+            "Tell me which part you want to review and I will explain it step by step."
+        )
+
+    if analysis["has_fear"]:
+        return (
+            f"{patient_name}, I understand this can feel worrying. Let's go step by step. "
+            f"In plain language, your report says: {official_report}."
+        )
+
+    return f"{patient_name}, in plain language, your report says: {official_report}."
+
+
 def _is_llm_available() -> bool:
     endpoint = settings.azure_openai_endpoint or ""
     api_key = settings.azure_openai_api_key or ""
@@ -400,6 +466,9 @@ def _analyze_avatar_question(user_message: str, official_report: str) -> dict[st
 
 
 def _build_safe_avatar_voice(user_message: str, patient_context: dict) -> str:
+    if _is_probably_english(user_message):
+        return _build_safe_avatar_voice_en(user_message, patient_context)
+
     patient_name = _patient_name(patient_context)
     official_report = patient_context.get("official_report") or AVATAR_ELENA_OFFICIAL_REPORT
     specialty = patient_context.get("specialty") or "tu especialidad"
@@ -439,12 +508,16 @@ def _sanitize_avatar_response(user_message: str, patient_context: dict, candidat
     analysis = _analyze_avatar_question(user_message, official_report)
     report_tokens = _tokenize_text(official_report)
 
+    user_is_english = _is_probably_english(user_message)
+
     if not candidate_voice:
         final_voice = safe_voice
     else:
         normalized_candidate = " ".join(candidate_voice.split())
         normalized_candidate = _align_patient_name(normalized_candidate, patient_name)
-        normalized_candidate = _simplify_clinical_language(normalized_candidate)
+        candidate_is_english = _is_probably_english(normalized_candidate)
+        if not (user_is_english or candidate_is_english):
+            normalized_candidate = _simplify_clinical_language(normalized_candidate)
         mentions_forbidden = any(token in normalized_candidate.lower() for token in _FORBIDDEN_RESPONSE_TOKENS)
         candidate_overlap = len(_tokenize_text(normalized_candidate) & report_tokens)
 
@@ -462,6 +535,8 @@ def _sanitize_avatar_response(user_message: str, patient_context: dict, candidat
                 final_voice = f"{patient_name}, Entiendo que esto pueda preocuparte. Vamos paso a paso. {final_voice}"
             if analysis["confirms_resolved"] and _SATISFACTION_REQUEST not in final_voice:
                 final_voice = final_voice.rstrip(". ") + ". " + _SATISFACTION_REQUEST
+
+    final_voice = _ensure_avatar_disclaimer(final_voice, english=user_is_english)
 
     return AvatarMessageResponse(
         justificacion_seguridad="Respuesta limitada al contenido explicito del informe y a reglas clinicas de seguridad, sin inventar tratamiento ni pronostico.",
