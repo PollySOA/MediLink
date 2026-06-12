@@ -1,4 +1,5 @@
 import asyncio
+import io
 import textwrap
 import uuid
 from datetime import datetime, timezone
@@ -6,14 +7,15 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse, Response
 
 from config import get_settings
 from data.fictional_patients import PATIENT_MAP
 from models.schemas import HumanizedReport, ProcessReportRequest, ProcessedReportResponse
-from models.schemas import IdoniaAccessResponse
-from services.azure_llm_service import extract_fhir_fields
+from models.schemas import IdoniaAccessResponse, UserRole
+from services.azure_llm_service import extract_fhir_fields, humanize_report
+from services.authz_service import AuthenticatedUser, get_current_user
 from services.fhir_service import build_diagnostic_report
 from services.idonia_service import (
     calcular_password_hash_idonia,
@@ -25,12 +27,22 @@ from services.idonia_service import (
     subir_estudio_idonia,
     validar_whoami_idonia,
 )
-from services.recog_service import humanizar_con_recog
+from services.recog_service import humanizar_con_recog, humanizar_con_recog_pdf_buffer
 from services.service_errors import ServiceError
+from src.application.use_cases.orchestrate_patient_transfer import (
+    build_pat002_clinical_identity,
+    orchestrate_pat002_clinical_staging_flow,
+    read_required_phase1_report_bytes,
+    read_required_study_bytes,
+)
+from src.infrastructure.http.idonia_adapter import IdoniaHttpGateway
+from src.infrastructure.http.recog_adapter import RecogHttpGateway
 
 router = APIRouter()
 _IDONIA_ACCESS_CACHE: dict[str, dict] = {}
 settings = get_settings()
+_idonia_gateway = IdoniaHttpGateway()
+_recog_gateway = RecogHttpGateway()
 
 
 def _mask_presence(value: str) -> dict:
@@ -102,35 +114,7 @@ def _build_study_summary_text(patient_name: str) -> str:
 
 
 def _read_phase1_report_pdf_bytes() -> bytes:
-    try:
-        with open("static/ficheros_reto/Informe_RM_RODILLA.pdf", "rb") as file_handle:
-            return file_handle.read()
-    except FileNotFoundError as exc:
-        raise ServiceError(
-            "No se encontró el fichero requerido para Fase I: static/ficheros_reto/Informe_RM_RODILLA.pdf",
-            status_code=500,
-            code="phase1_report_file_missing",
-        ) from exc
-
-
-def _load_optional_file_bytes(path_value: str) -> bytes | None:
-    path = path_value.strip()
-    if not path:
-        return None
-
-    candidate = Path(path)
-    if not candidate.is_file():
-        return None
-
-    return candidate.read_bytes()
-
-
-def _persist_humanized_text_file(*, patient_id: str, patient_name: str, content: str) -> Path:
-    base_dir = Path("static/ficheros_reto/humanizados")
-    base_dir.mkdir(parents=True, exist_ok=True)
-    output_path = base_dir / f"Informe_para_paciente_{patient_id}.txt"
-    output_path.write_text(content.strip() + "\n", encoding="utf-8")
-    return output_path
+    return read_required_phase1_report_bytes()
 
 
 async def _build_humanized_patient_text(patient_name: str, report_text: str, specialty: str | None = None) -> str:
@@ -151,15 +135,9 @@ async def _upload_full_bundle(
     dicom_accession_number: str,
     dicom_study_description: str,
 ) -> dict:
-    # 0) Crear siempre archivo humanizado local para trazabilidad de Fase II.
     patient_humanized_text = await _build_humanized_patient_text(patient_name, sample_report, specialty)
-    _persist_humanized_text_file(
-        patient_id=patient_id,
-        patient_name=patient_name,
-        content=patient_humanized_text,
-    )
 
-    # 1) Informe técnico Fase I: obligatorio cargar el PDF real entregado por el reto.
+    # 1) Informe técnico Fase I en memoria.
     report_bytes = _read_phase1_report_pdf_bytes()
     report_filename = "Informe_RM_RODILLA.pdf"
 
@@ -172,7 +150,7 @@ async def _upload_full_bundle(
         dicom_study_description=dicom_study_description,
     )
 
-    # 2) Informe humanizado para paciente.
+    # 2) Informe humanizado para paciente en memoria.
     humanized_bytes = _text_to_pdf_bytes(patient_humanized_text)
     await subir_archivo_idonia(
         file_name=f"Informe_para_paciente_{patient_id}.pdf",
@@ -183,17 +161,8 @@ async def _upload_full_bundle(
         dicom_study_description=dicom_study_description,
     )
 
-    # 3) Estudio DICOM/adjunto: usa fichero real si existe; fallback a resumen PDF.
-    study_source_bytes = _load_optional_file_bytes(settings.idonia_source_study_file_path)
-    if study_source_bytes:
-        study_bytes = study_source_bytes
-        study_filename = Path(settings.idonia_source_study_file_path).name or f"estudio_{patient_id.lower()}.dcm"
-        lowered_name = study_filename.lower()
-        study_content_type = "application/dicom" if lowered_name.endswith(".dcm") else "application/pdf"
-    else:
-        study_bytes = _text_to_pdf_bytes(_build_study_summary_text(patient_name))
-        study_filename = f"estudio_{patient_id.lower()}.pdf"
-        study_content_type = "application/pdf"
+    # 3) Estudio DICOM/adjunto: obligatorio y en memoria, sin fallback local.
+    study_filename, study_bytes, study_content_type = _load_required_study_bytes()
 
     await subir_estudio_idonia(
         file_name=study_filename,
@@ -205,6 +174,74 @@ async def _upload_full_bundle(
     )
 
     return report_result
+
+
+def _build_pat002_clinical_identity_route(patient_id: str) -> tuple[str, str, str]:
+    """
+    Manual hackathon: PAT-002 debe resolverse obligatoriamente a Carolina/D210105597.
+    Ruta clínica en Idonia: Traslados desde Asturias/<DNI>.
+    """
+    if patient_id != "PAT-002":
+        raise ServiceError(
+            "El circuito clinico real de staging solo aplica a PAT-002",
+            status_code=400,
+            code="clinical_flow_invalid_patient",
+            details={"expected_patient_id": "PAT-002", "received": patient_id},
+        )
+
+    identity = build_pat002_clinical_identity()
+    return identity.dicom_patient_id, identity.dicom_accession_number, identity.route
+
+
+def _load_required_study_bytes() -> tuple[str, bytes, str]:
+    return read_required_study_bytes()
+
+
+def _raise_clinical_phase_error(*, phase: str, manual_step: str, route: str, exc: ServiceError) -> None:
+    details = dict(exc.details or {})
+    details.update(
+        {
+            "phase": phase,
+            "manual_step": manual_step,
+            "route": route,
+            "actionable_diagnosis": (
+                "Revise credenciales/permisos del tenant en Idonia y el modo API key-only en Recog"
+            ),
+        }
+    )
+    raise ServiceError(
+        f"Fallo en {phase}: {exc.message}",
+        status_code=exc.status_code,
+        code=exc.code,
+        details=details,
+    ) from exc
+
+
+async def _orchestrate_pat002_clinical_staging_flow() -> dict:
+    result = await orchestrate_pat002_clinical_staging_flow(
+        idonia_gateway=_idonia_gateway,
+        recog_gateway=_recog_gateway,
+        report_bytes_provider=_read_phase1_report_pdf_bytes,
+        study_bytes_provider=_load_required_study_bytes,
+    )
+
+    patient = PATIENT_MAP.get("PAT-002")
+    if not patient:
+        raise ServiceError(
+            "No se encontro PAT-002 en catalogo clinico",
+            status_code=404,
+            code="clinical_patient_not_found",
+        )
+
+    return {
+        "patient": patient,
+        "route": result.route,
+        "report_upload": result.report_upload,
+        "study_upload": result.study_upload,
+        "humanized_upload": result.humanized_upload,
+        "magic_link_url": result.magic_link_url,
+        "magic_link_pin": result.magic_link_pin,
+    }
 
 
 def _select_magic_link_reference(
@@ -225,17 +262,42 @@ def _select_magic_link_reference(
 
 
 async def _run_pipeline(request: ProcessReportRequest) -> tuple[HumanizedReport, dict, dict, str]:
+    humanized_payload: HumanizedReport
+    patient_text: str
+
     try:
-        patient_text, fhir_fields = await asyncio.gather(
-            humanizar_con_recog(request.dictation_report, request.specialty),
-            extract_fhir_fields(request.dictation_report),
-        )
+        fhir_fields = await extract_fhir_fields(request.dictation_report)
     except ServiceError:
         raise
     except Exception as exc:
         raise ServiceError(
-            "Error en pipeline de IA para humanizacion/FHIR",
+            "Error en pipeline de IA para FHIR",
             code="pipeline_llm_error",
+            details={"reason": str(exc)},
+        ) from exc
+
+    try:
+        patient_text = await humanizar_con_recog(request.dictation_report, request.specialty)
+        humanized_payload = _build_humanized_response(patient_text)
+    except ServiceError as recog_exc:
+        # Fallback de continuidad clínica: si Recog falla por cuota/red, usar humanización local/LLM.
+        try:
+            fallback_humanized = await humanize_report(request.dictation_report, request.specialty)
+            patient_text = fallback_humanized.patient_summary
+            humanized_payload = fallback_humanized
+        except Exception as fallback_exc:
+            raise ServiceError(
+                "Error en pipeline de IA para humanizacion",
+                code="pipeline_humanization_error",
+                details={
+                    "recog_reason": str(recog_exc),
+                    "fallback_reason": str(fallback_exc),
+                },
+            ) from fallback_exc
+    except Exception as exc:
+        raise ServiceError(
+            "Error en pipeline de IA para humanizacion",
+            code="pipeline_humanization_error",
             details={"reason": str(exc)},
         ) from exc
 
@@ -243,8 +305,9 @@ async def _run_pipeline(request: ProcessReportRequest) -> tuple[HumanizedReport,
     upload_content = _text_to_pdf_bytes(patient_text)
 
     # Validar y derivar parámetros DICOM requeridos por manual de Idonia
+    patient = PATIENT_MAP.get(request.patient_id or "") if request.patient_id else None
     dicom_patient_id = request.dicom_patient_id or "Traslados desde Asturias"
-    dicom_accession_number = request.dicom_accession_number or request.patient_id or f"ACC-{uuid.uuid4().hex[:8].upper()}"
+    dicom_accession_number = request.dicom_accession_number or (patient.dni if patient else None) or request.patient_id or f"ACC-{uuid.uuid4().hex[:8].upper()}"
     dicom_study_description = request.dicom_study_description or "RM_Rodilla"
 
     # Intentar subir a Idonia; si falla (credenciales demo) continuar sin Magic Link
@@ -272,7 +335,7 @@ async def _run_pipeline(request: ProcessReportRequest) -> tuple[HumanizedReport,
         upload_result = {"route": None, "raw": {}}
         magic_link = ""
 
-    return _build_humanized_response(patient_text), fhir_fields, upload_result, magic_link
+    return humanized_payload, fhir_fields, upload_result, magic_link
 
 
 @router.post("/process", response_model=ProcessedReportResponse)
@@ -317,14 +380,54 @@ async def create_patient_idonia_link(
     resource: Literal["report", "study"] = "report",
     expired_creation_mode: Literal["create", "skip", "update"] | None = Query(default=None),
     include_bundle: bool = Query(default=True),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     patient = PATIENT_MAP.get(patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
+    expose_pin = current_user["role"] == UserRole.patient
+
+    # Flujo clínico real del hackathon: sin fallback local para PAT-002.
+    if patient_id == "PAT-002" and resource == "report":
+        try:
+            result = await _orchestrate_pat002_clinical_staging_flow()
+        except ServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.as_http_detail()) from exc
+
+        access_id = uuid.uuid4().hex
+        _IDONIA_ACCESS_CACHE[access_id] = {
+            "url": result["magic_link_url"],
+            "created_at": datetime.now(timezone.utc),
+        }
+
+        public_base_url = settings.idonia_magic_link_public_base_url.strip()
+        return IdoniaAccessResponse(
+            status="ok",
+            file_id=str(result["humanized_upload"].get("file_id") or ""),
+            open_path=f"/api/reports/idonia/open/{access_id}",
+            resource="report",
+            magic_link_url=result["magic_link_url"],
+            magic_link_base_url=public_base_url or None,
+            magic_link_route=result["route"],
+            magic_link_route_urlsafe=quote(result["route"], safe=""),
+            magic_link_pin=result["magic_link_pin"] if expose_pin else None,
+            password_control={
+                "algorithm": "IDONIA_AUTO_PIN",
+                "hash_applied": False,
+                "lopdgdd": (
+                    "PIN devuelto por endpoint de Magic Link; distribuir solo por canal seguro"
+                    if expose_pin
+                    else "Acceso profesional gestionado por protocolo medico; PIN no expuesto en esta respuesta"
+                ),
+            },
+            created_at=datetime.now(timezone.utc),
+        )
+
     dicom_patient_id = "Traslados desde Asturias"
     dicom_accession_number = patient.dni
     dicom_study_description = "RM_Rodilla"
+    magic_link_reference = f"{dicom_patient_id}/{dicom_accession_number}"
 
     try:
         if resource == "study":
@@ -365,13 +468,45 @@ async def create_patient_idonia_link(
                 )
 
         # Fase III: el ML debe apuntar al contenedor general del estudio (carpeta), no a archivo individual.
-        magic_link_reference = f"{dicom_patient_id}/{dicom_accession_number}"
         magic_link_info = await generar_magic_link_info(
             magic_link_reference,
             expired_creation_mode=expired_creation_mode,
         )
         magic_link = str(magic_link_info["url"])
     except ServiceError as exc:
+        if expose_pin:
+            # Fallback para flujo paciente: evita bloquear UI cuando Idonia externo está degradado.
+            public_base_url = settings.idonia_magic_link_public_base_url.strip() or "https://demo.idonia.com/v/idoniahackaton"
+            demo_magic_link = f"{public_base_url}?url={quote(magic_link_reference, safe='')}"
+            demo_pin = settings.idonia_magic_link_pin.strip() or None
+
+            access_id = uuid.uuid4().hex
+            _IDONIA_ACCESS_CACHE[access_id] = {
+                "url": demo_magic_link,
+                "created_at": datetime.now(timezone.utc),
+            }
+
+            return IdoniaAccessResponse(
+                status="ok",
+                file_id="",
+                open_path=f"/api/reports/idonia/open/{access_id}",
+                resource=resource,
+                magic_link_url=demo_magic_link,
+                magic_link_base_url=public_base_url,
+                magic_link_route=magic_link_reference,
+                magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
+                magic_link_pin=demo_pin,
+                password_control={
+                    "algorithm": "IDONIA_AUTO_PIN",
+                    "hash_applied": False,
+                    "lopdgdd": (
+                        "Acceso devuelto en modo continuidad demo por indisponibilidad temporal del proveedor externo. "
+                        "Comparte PIN por canal seguro y valida con soporte de Idonia si persiste."
+                    ),
+                },
+                created_at=datetime.now(timezone.utc),
+            )
+
         raise HTTPException(status_code=exc.status_code, detail=exc.as_http_detail()) from exc
 
     access_id = uuid.uuid4().hex
@@ -391,11 +526,15 @@ async def create_patient_idonia_link(
         magic_link_base_url=public_base_url or None,
         magic_link_route=magic_link_reference,
         magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
-        magic_link_pin=magic_link_info.get("pin"),
+        magic_link_pin=magic_link_info.get("pin") if expose_pin else None,
         password_control={
             "algorithm": "IDONIA_AUTO_PIN",
             "hash_applied": False,
-            "lopdgdd": "PIN devuelto por el endpoint de creacion del Magic Link; no compartir por canal inseguro",
+            "lopdgdd": (
+                "PIN devuelto por el endpoint de creacion del Magic Link; no compartir por canal inseguro"
+                if expose_pin
+                else "Acceso profesional gestionado por protocolo medico; PIN no expuesto en esta respuesta"
+            ),
         },
         created_at=datetime.now(timezone.utc),
     )
