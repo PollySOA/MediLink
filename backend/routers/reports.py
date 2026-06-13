@@ -16,7 +16,7 @@ from data.fictional_patients import PATIENT_MAP
 from models.schemas import HumanizedReport, ProcessReportRequest, ProcessedReportResponse
 from models.schemas import IdoniaAccessResponse, UserRole
 from services.azure_llm_service import extract_fhir_fields, humanize_report
-from services.authz_service import AuthenticatedUser, get_current_user
+from services.authz_service import AuthenticatedUser, can_edit_patient, can_view_patient, get_current_user
 from services.fhir_service import build_diagnostic_report
 from services.idonia_service import (
     calcular_password_hash_idonia,
@@ -73,7 +73,25 @@ def _resolve_effective_demo_pin(candidate_pin: str | None) -> str | None:
     configured_pin = settings.idonia_magic_link_pin.strip()
     if configured_pin:
         return configured_pin
-    return candidate_pin
+
+    normalized_candidate = (candidate_pin or "").strip()
+    if normalized_candidate:
+        return normalized_candidate
+
+    return None
+
+
+def _normalize_magic_link_url(raw_url: str | None, route: str) -> str:
+    candidate = (raw_url or "").strip()
+    if candidate.startswith("http://") or candidate.startswith("https://"):
+        return candidate
+
+    public_base_url = settings.idonia_magic_link_public_base_url.strip()
+    if public_base_url:
+        separator = "&" if "?" in public_base_url else "?"
+        return f"{public_base_url}{separator}url={quote(route, safe='')}"
+
+    return f"{settings.idonia_base_url.rstrip('/')}/ml?route={quote(route, safe='')}"
 
 
 def _escape_pdf_text(value: str) -> str:
@@ -372,7 +390,17 @@ async def _run_pipeline(request: ProcessReportRequest) -> tuple[HumanizedReport,
 
 
 @router.post("/process", response_model=ProcessedReportResponse)
-async def process_report(request: ProcessReportRequest):
+async def process_report(
+    request: ProcessReportRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    if request.patient_id:
+        patient = PATIENT_MAP.get(request.patient_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Paciente no encontrado")
+        if not can_edit_patient(current_user, patient):
+            raise HTTPException(status_code=403, detail="No tienes permiso para procesar este informe")
+
     try:
         humanized, fhir_fields, upload_result, magic_link = await _run_pipeline(request)
     except ServiceError as exc:
@@ -419,6 +447,9 @@ async def create_patient_idonia_link(
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
+    if not can_view_patient(current_user, patient):
+        raise HTTPException(status_code=403, detail="No tienes permiso para abrir este paciente en Idonia")
+
     # Fase III (cierre de barreras): paciente y medico usan el mismo patrón QR+PIN.
     expose_pin = current_user["role"] in {UserRole.patient, UserRole.doctor}
     # Fase III estricta: para "report" siempre se publica el bundle completo de 3 artefactos.
@@ -432,8 +463,10 @@ async def create_patient_idonia_link(
             raise HTTPException(status_code=exc.status_code, detail=exc.as_http_detail()) from exc
 
         access_id = uuid.uuid4().hex
+        normalized_magic_link = _normalize_magic_link_url(result.get("magic_link_url"), result["route"])
+
         _IDONIA_ACCESS_CACHE[access_id] = {
-            "url": result["magic_link_url"],
+            "url": normalized_magic_link,
             "created_at": datetime.now(timezone.utc),
         }
 
@@ -444,7 +477,7 @@ async def create_patient_idonia_link(
             file_id=str(result["humanized_upload"].get("file_id") or ""),
             open_path=f"/api/reports/idonia/open/{access_id}",
             resource="report",
-            magic_link_url=result["magic_link_url"],
+            magic_link_url=normalized_magic_link,
             magic_link_base_url=public_base_url or None,
             magic_link_route=result["route"],
             magic_link_route_urlsafe=quote(result["route"], safe=""),
@@ -521,7 +554,7 @@ async def create_patient_idonia_link(
             include_pin=expose_pin,
             expired_creation_mode=expired_creation_mode,
         )
-        magic_link = str(magic_link_info["url"])
+        magic_link = _normalize_magic_link_url(str(magic_link_info["url"]), magic_link_reference)
     except ServiceError as exc:
         # Fallback de continuidad para ambos roles cuando proveedor externo está degradado.
         # Paciente mantiene PIN; profesional recibe enlace limpio sin PIN.
@@ -530,8 +563,10 @@ async def create_patient_idonia_link(
         demo_pin = settings.idonia_magic_link_pin.strip() or None
 
         access_id = uuid.uuid4().hex
+        normalized_demo_magic_link = _normalize_magic_link_url(demo_magic_link, magic_link_reference)
+
         _IDONIA_ACCESS_CACHE[access_id] = {
-            "url": demo_magic_link,
+            "url": normalized_demo_magic_link,
             "created_at": datetime.now(timezone.utc),
         }
 
@@ -541,7 +576,7 @@ async def create_patient_idonia_link(
             file_id="",
             open_path=f"/api/reports/idonia/open/{access_id}",
             resource=resource,
-            magic_link_url=demo_magic_link,
+            magic_link_url=normalized_demo_magic_link,
             magic_link_base_url=public_base_url,
             magic_link_route=magic_link_reference,
             magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
@@ -567,8 +602,10 @@ async def create_patient_idonia_link(
         )
 
     access_id = uuid.uuid4().hex
+    normalized_magic_link = _normalize_magic_link_url(magic_link, magic_link_reference)
+
     _IDONIA_ACCESS_CACHE[access_id] = {
-        "url": magic_link,
+        "url": normalized_magic_link,
         "created_at": datetime.now(timezone.utc),
     }
 
@@ -580,7 +617,7 @@ async def create_patient_idonia_link(
         file_id=str(report_upload.get("file_id") or ""),
         open_path=f"/api/reports/idonia/open/{access_id}",
         resource=resource,
-        magic_link_url=magic_link,
+        magic_link_url=normalized_magic_link,
         magic_link_base_url=public_base_url or None,
         magic_link_route=magic_link_reference,
         magic_link_route_urlsafe=quote(magic_link_reference, safe=""),

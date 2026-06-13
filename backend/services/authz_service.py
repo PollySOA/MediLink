@@ -6,6 +6,7 @@ from jose import JWTError, jwt
 
 from config import get_settings
 from data.users import USER_BY_ID
+from data.fictional_patients import FictionalPatient
 from models.schemas import UserRole
 
 
@@ -53,3 +54,23 @@ def get_current_doctor(current_user: AuthenticatedUser = Depends(get_current_use
     if current_user["role"] != UserRole.doctor:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo acceso para medicos")
     return current_user
+
+
+def can_view_patient(current_user: AuthenticatedUser, patient: FictionalPatient) -> bool:
+    if current_user["role"] == UserRole.doctor:
+        return True
+    if current_user["role"] == UserRole.patient:
+        return patient.id == current_user["id"]
+    return False
+
+
+def can_edit_patient(current_user: AuthenticatedUser, patient: FictionalPatient) -> bool:
+    if current_user["role"] == UserRole.doctor:
+        return patient.assigned_doctor_id == current_user["id"]
+    if current_user["role"] == UserRole.patient:
+        return patient.id == current_user["id"]
+    return False
+
+
+def can_prescribe_patient(current_user: AuthenticatedUser, patient: FictionalPatient) -> bool:
+    return current_user["role"] == UserRole.doctor and patient.assigned_doctor_id == current_user["id"]

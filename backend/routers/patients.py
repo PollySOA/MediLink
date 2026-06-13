@@ -3,7 +3,7 @@ import unicodedata
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from data.fictional_patients import FICTIONAL_PATIENTS, PATIENT_MAP
 from data.prescriptions import PRESCRIPTIONS
-from models.schemas import ErrorResponse, FictionalPatient, PatientSearchResponse, UserRole
+from models.schemas import ErrorResponse, FictionalPatient, PatientSearchResponse, Prescription, UserRole
 from services.authz_service import AuthenticatedUser, get_current_user
 
 router = APIRouter()
@@ -47,7 +47,7 @@ def search_patients(
     normalized_dni = _normalize_search_text(dni) if dni else None
 
     if current_user["role"] == UserRole.doctor:
-        candidate_patients = [p for p in FICTIONAL_PATIENTS if p.assigned_doctor_id == current_user["id"]]
+        candidate_patients = FICTIONAL_PATIENTS
     elif current_user["role"] == UserRole.patient:
         own_patient = PATIENT_MAP.get(current_user["id"])
         candidate_patients = [own_patient] if own_patient else []
@@ -116,3 +116,15 @@ def get_patient_summary(patient_id: str, current_user: AuthenticatedUser = Depen
         "prescriptions_count": len(prescriptions),
         "latest_prescription": prescriptions[-1] if prescriptions else None,
     }
+
+
+@router.get("/{patient_id}/prescriptions", response_model=list[Prescription])
+def get_patient_prescriptions(patient_id: str, current_user: AuthenticatedUser = Depends(get_current_user)):
+    patient = PATIENT_MAP.get(patient_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+
+    if not _is_authorized_patient_access(current_user, patient):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes permiso para ver estas prescripciones")
+
+    return PRESCRIPTIONS.get(patient_id, [])

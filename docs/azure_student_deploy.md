@@ -118,6 +118,25 @@ pm2 serve /home/site/wwwroot --no-daemon --spa
 4. Frontend
 5. Smoke test completo
 
+## Automatizacion one-shot
+
+Para desplegar backend y frontend en una sola pasada, usa:
+
+```bash
+scripts/deploy_azure_one_shot.sh
+```
+
+Ese wrapper ejecuta primero el backend y despues compila y publica el frontend contra la URL real del backend ya desplegado.
+
+Si prefieres publicar por separado:
+
+```bash
+scripts/deploy_backend_one_shot.sh
+scripts/deploy_frontend_one_shot.sh
+```
+
+Ambos scripts reutilizan la configuracion de Azure ya presente y no guardan secretos en el repositorio.
+
 ## Smoke test post-deploy
 
 ### Backend

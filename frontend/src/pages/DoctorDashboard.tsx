@@ -33,6 +33,7 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   const [idoniaLoading, setIdoniaLoading] = useState(false)
   const [idoniaError, setIdoniaError] = useState("")
   const [idoniaPinStatus, setIdoniaPinStatus] = useState<string | null>(null)
+  const selectedCanEdit = Boolean(selected && user && selected.assigned_doctor_id === user.id)
 
   useEffect(() => {
     if (user) {
@@ -86,19 +87,26 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
     setProcessedReport(null)
     setReportError("")
     setPrescSuccess(false)
+    setPrescForm({})
     setAvatarFeedback(null)
     setIdoniaLink(null)
     setIdoniaPin(null)
     setIdoniaPinStatus(null)
     setIdoniaError("")
-    api.getPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
-    api
-      .getAvatarFeedbackSummary(p.id, token ?? undefined)
-      .then(setAvatarFeedback)
-      .catch((e: unknown) => {
-        setAvatarFeedback(null)
-        setSearchError(formatApiError(e, "No se pudieron cargar las valoraciones del asistente"))
-      })
+
+    if (p.assigned_doctor_id === user?.id) {
+      api.getPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
+      api
+        .getAvatarFeedbackSummary(p.id, token ?? undefined)
+        .then(setAvatarFeedback)
+        .catch((e: unknown) => {
+          setAvatarFeedback(null)
+          setSearchError(formatApiError(e, "No se pudieron cargar las valoraciones del asistente"))
+        })
+      return
+    }
+
+    setPrescriptions([])
   }
 
   function handleQuickClinicalAction(p: FictionalPatient) {
@@ -134,7 +142,7 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   }
 
   async function handleProcessReport() {
-    if (!selected || !reportText) return
+    if (!selected || !selectedCanEdit || !reportText) return
     setReportLoading(true)
     setReportError("")
     try {
@@ -148,7 +156,7 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   }
 
   async function handlePrescribe() {
-    if (!selected || !prescForm.medication) return
+    if (!selected || !selectedCanEdit || !prescForm.medication) return
     setPrescLoading(true)
     try {
       const rx = await api.createPrescription({ ...(prescForm as CreatePrescriptionForm), patient_id: selected.id }, token ?? undefined)
@@ -185,7 +193,7 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
               <input
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Buscar por nombre o DNI"
+                placeholder="Buscar cualquier paciente por nombre o DNI"
                 style={{ flex: 1 }}
               />
               <button className="btn btn-primary" onClick={handleSearchPatients} disabled={searchLoading}>
@@ -211,7 +219,12 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
                   <p style={{ fontWeight: 600, fontSize: 15 }}>{p.name}</p>
                   <p className="patient-card-subtitle">{p.age} años · {p.specialty} · {p.clinical_context}</p>
                 </div>
-                <span className="badge badge-blue">{p.id}</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <span className="badge badge-blue">{p.id}</span>
+                  <span className={`badge ${p.assigned_doctor_id === user?.id ? "badge-teal" : "badge-amber"}`}>
+                    {p.assigned_doctor_id === user?.id ? "Editable" : "Solo lectura"}
+                  </span>
+                </div>
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 {p.conditions.map(c => <span key={c} className="badge badge-teal">{c}</span>)}
@@ -259,18 +272,28 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
             <>
               <div className="card">
                 <p className="card-head">Paciente: {selected.name}</p>
+                {!selectedCanEdit && (
+                  <div className="alert-box alert-info" style={{ marginBottom: 12 }}>
+                    Paciente fuera de tu cohorte. Puedes revisar su informe y abrir Idonia, pero no editarlo ni generar receta.
+                  </div>
+                )}
                 <div className="stack">
                   <div>
                     <label>Informe médico</label>
-                    <textarea rows={7} value={reportText} onChange={e => setReportText(e.target.value)} />
+                    <textarea
+                      rows={7}
+                      value={reportText}
+                      onChange={e => setReportText(e.target.value)}
+                      readOnly={!selectedCanEdit}
+                    />
                   </div>
                   <div>
                     <label>Especialidad</label>
-                    <input value={specialty} onChange={e => setSpecialty(e.target.value)} />
+                    <input value={specialty} onChange={e => setSpecialty(e.target.value)} readOnly={!selectedCanEdit} />
                   </div>
                   <div className="row">
-                    <button className="btn btn-primary" onClick={handleProcessReport} disabled={reportLoading || !reportText}>
-                      {reportLoading ? "Procesando con IA..." : "Procesar y humanizar"}
+                    <button className="btn btn-primary" onClick={handleProcessReport} disabled={reportLoading || !reportText || !selectedCanEdit}>
+                      {reportLoading ? "Procesando con IA..." : selectedCanEdit ? "Procesar y humanizar" : "Solo lectura"}
                     </button>
                     <button className="btn btn-ghost" onClick={handleCreateIdoniaLink} disabled={idoniaLoading}>
                       {idoniaLoading ? "Generando acceso Idonia..." : "Acceso Idonia en 1 clic"}
@@ -335,19 +358,24 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
             <>
               <div className="card">
                 <p className="card-head">Nueva receta para {selected.name}</p>
+                {!selectedCanEdit && (
+                  <div className="alert-box alert-info" style={{ marginBottom: 12 }}>
+                    Este paciente está en modo solo lectura para tu perfil.
+                  </div>
+                )}
                 <div className="grid-2">
-                  <div><label>Medicamento</label><input value={prescForm.medication ?? ""} onChange={e => setPrescForm(p => ({ ...p, medication: e.target.value }))} placeholder="Ibuprofeno" /></div>
-                  <div><label>Dosis</label><input value={prescForm.dosage ?? ""} onChange={e => setPrescForm(p => ({ ...p, dosage: e.target.value }))} placeholder="600mg" /></div>
-                  <div><label>Frecuencia</label><input value={prescForm.frequency ?? ""} onChange={e => setPrescForm(p => ({ ...p, frequency: e.target.value }))} placeholder="Cada 8 horas" /></div>
-                  <div><label>Duración</label><input value={prescForm.duration ?? ""} onChange={e => setPrescForm(p => ({ ...p, duration: e.target.value }))} placeholder="7 días" /></div>
+                  <div><label>Medicamento</label><input value={prescForm.medication ?? ""} onChange={e => setPrescForm(p => ({ ...p, medication: e.target.value }))} placeholder="Ibuprofeno" disabled={!selectedCanEdit} /></div>
+                  <div><label>Dosis</label><input value={prescForm.dosage ?? ""} onChange={e => setPrescForm(p => ({ ...p, dosage: e.target.value }))} placeholder="600mg" disabled={!selectedCanEdit} /></div>
+                  <div><label>Frecuencia</label><input value={prescForm.frequency ?? ""} onChange={e => setPrescForm(p => ({ ...p, frequency: e.target.value }))} placeholder="Cada 8 horas" disabled={!selectedCanEdit} /></div>
+                  <div><label>Duración</label><input value={prescForm.duration ?? ""} onChange={e => setPrescForm(p => ({ ...p, duration: e.target.value }))} placeholder="7 días" disabled={!selectedCanEdit} /></div>
                 </div>
                 <div style={{ marginTop: 12 }}>
                   <label>Instrucciones para el paciente</label>
-                  <textarea rows={3} value={prescForm.instructions ?? ""} onChange={e => setPrescForm(p => ({ ...p, instructions: e.target.value }))} placeholder="Tomar con alimentos, reposo relativo..." />
+                  <textarea rows={3} value={prescForm.instructions ?? ""} onChange={e => setPrescForm(p => ({ ...p, instructions: e.target.value }))} placeholder="Tomar con alimentos, reposo relativo..." disabled={!selectedCanEdit} />
                 </div>
                 <div style={{ marginTop: 12 }} className="row">
-                  <button className="btn btn-primary" onClick={handlePrescribe} disabled={prescLoading || !prescForm.medication}>
-                    {prescLoading ? "Emitiendo receta..." : "Emitir receta"}
+                  <button className="btn btn-primary" onClick={handlePrescribe} disabled={prescLoading || !prescForm.medication || !selectedCanEdit}>
+                    {prescLoading ? "Emitiendo receta..." : selectedCanEdit ? "Emitir receta" : "Solo lectura"}
                   </button>
                 </div>
                 {prescSuccess && <div className="alert-box alert-success" style={{ marginTop: 10 }}>Receta emitida y explicada al paciente en lenguaje claro.</div>}

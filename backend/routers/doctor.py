@@ -5,7 +5,7 @@ from models.schemas import CreatePrescriptionRequest, ErrorResponse, Prescriptio
 from data.fictional_patients import PATIENT_MAP
 from data.prescriptions import PRESCRIPTIONS
 from data.users import USER_BY_ID
-from services.authz_service import AuthenticatedUser, get_current_doctor
+from services.authz_service import AuthenticatedUser, can_prescribe_patient, get_current_doctor
 from services.azure_llm_service import humanize_prescription
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def create_prescription(
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
     patient = PATIENT_MAP[body.patient_id]
-    if patient.assigned_doctor_id != current_doctor["id"]:
+    if not can_prescribe_patient(current_doctor, patient):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo puedes prescribir a tus pacientes asignados")
 
     doctor = USER_BY_ID.get(current_doctor["id"])
@@ -86,7 +86,7 @@ def get_patient_prescriptions(patient_id: str, current_doctor: AuthenticatedUser
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
-    if patient.assigned_doctor_id != current_doctor["id"]:
+    if not can_prescribe_patient(current_doctor, patient):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No puedes consultar prescripciones de otro medico")
 
     return PRESCRIPTIONS.get(patient_id, [])

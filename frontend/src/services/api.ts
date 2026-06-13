@@ -142,6 +142,10 @@ export const api = {
     return req<Prescription[]>(`/api/doctor/prescriptions/${patientId}`, undefined, token)
   },
 
+  getOwnPatientPrescriptions(patientId: string, token?: string) {
+    return req<Prescription[]>(`/api/patients/${patientId}/prescriptions`, undefined, token)
+  },
+
   processReport(body: { dictation_report: string; patient_id?: string; specialty?: string }, token?: string) {
     return req<ProcessedReport>("/api/reports/process", { method: "POST", body: JSON.stringify(body) }, token)
   },

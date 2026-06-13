@@ -29,10 +29,27 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
   const [uiError, setUiError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  }
+
   function alignPatientName(text: string, patientName: string | undefined): string {
     if (!patientName) return text
-    const withFullName = text.replace(/\bCarolina\s+Riera\s+Segura\b/gi, patientName)
-    return withFullName.replace(/\bCarolina\b/gi, patientName)
+    const normalizedPatientName = patientName.trim()
+    if (!normalizedPatientName) return text
+
+    const nameParts = normalizedPatientName.split(/\s+/).filter(Boolean)
+    if (nameParts.length > 1) {
+      const duplicatedSuffix = nameParts.slice(1).join(" ")
+      const duplicateRegex = new RegExp(escapeRegExp(`${normalizedPatientName} ${duplicatedSuffix}`), "gi")
+      if (duplicateRegex.test(text)) {
+        return text.replace(duplicateRegex, normalizedPatientName)
+      }
+    }
+
+    // Keep already-correct salutations intact and only expand the demo first name when needed.
+    if (text.toLocaleLowerCase().includes(normalizedPatientName.toLocaleLowerCase())) return text
+    return text.replace(/\bCarolina\b/gi, normalizedPatientName)
   }
 
   const voice = useVoiceRecorder({
@@ -45,7 +62,7 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
     if (!user) return
     api.getPatient(user.id, token ?? undefined).then(p => {
       setPatient(p)
-      api.getPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
+      api.getOwnPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
       loadGreeting(p.id, p.name)
     })
   }, [user])
