@@ -46,6 +46,11 @@ _idonia_gateway = IdoniaHttpGateway()
 _recog_gateway = RecogHttpGateway()
 
 
+def _require_doctor(user: AuthenticatedUser) -> None:
+    if user.role != UserRole.DOCTOR:
+        raise HTTPException(status_code=403, detail="Solo personal medico autorizado")
+
+
 def _mask_presence(value: str) -> dict:
     return {
         "configured": bool(value and value.strip()),
@@ -664,7 +669,8 @@ async def download_idonia_file(route: str = Query(..., min_length=1)):
 
 
 @router.get("/idonia/whoami")
-async def idonia_whoami():
+async def idonia_whoami(current_user: AuthenticatedUser = Depends(get_current_user)):
+    _require_doctor(current_user)
     try:
         payload = await validar_whoami_idonia()
     except ServiceError as exc:
@@ -672,7 +678,9 @@ async def idonia_whoami():
 
     return {
         "status": "ok",
-        "whoami": payload,
+        "whoami": {
+            "keys": list(payload.keys()) if isinstance(payload, dict) else [],
+        },
     }
 
 
@@ -680,7 +688,9 @@ async def idonia_whoami():
 async def idonia_get_magic_link(
     route: str = Query(..., min_length=1),
     return_expired: bool = Query(default=False),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
+    _require_doctor(current_user)
     try:
         payload = await obtener_magic_link(
             route,
@@ -698,7 +708,9 @@ async def idonia_get_magic_link(
 @router.get("/integration/diagnostics")
 async def integration_diagnostics(
     route: str = Query(default="Traslados desde Asturias/D210105597", min_length=1),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
+    _require_doctor(current_user)
     """
     Diagnóstico unificado del flujo hackathon:
     - Estado de configuración de Recog e Idonia
