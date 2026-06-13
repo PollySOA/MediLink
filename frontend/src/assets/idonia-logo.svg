@@ -1,0 +1,9 @@
+<svg width="420" height="120" viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Idonia logo">
+  <rect width="420" height="120" fill="none"/>
+  <g transform="translate(6 10)">
+    <path d="M48 88C35 63 20 53 7 50C-4 47 -4 30 11 28C29 25 45 40 58 82L48 88Z" fill="#E1645A"/>
+    <path d="M58 82C54 48 60 14 78 6C94 -1 108 8 108 25C108 49 88 72 58 82Z" fill="#2C95B0"/>
+    <path d="M58 82C74 58 92 49 109 50C123 50 129 64 121 77C112 92 89 98 58 82Z" fill="#299989"/>
+  </g>
+  <text x="128" y="82" font-size="84" font-family="'Brush Script MT', 'Segoe Script', cursive" font-weight="700" fill="#0A5F88">idonia</text>
+</svg>

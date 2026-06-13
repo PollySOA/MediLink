@@ -173,7 +173,26 @@ async def _upload_full_bundle(
         dicom_study_description=dicom_study_description,
     )
 
-    return report_result
+    return {
+        "report_upload": report_result,
+        "bundle_items": {
+            "image_study": {
+                "uploaded": True,
+                "file_name": study_filename,
+                "content_type": study_content_type,
+            },
+            "original_report": {
+                "uploaded": True,
+                "file_name": report_filename,
+                "content_type": "application/pdf",
+            },
+            "humanized_report": {
+                "uploaded": True,
+                "file_name": f"Informe_para_paciente_{patient_id}.pdf",
+                "content_type": "application/pdf",
+            },
+        },
+    }
 
 
 def _build_pat002_clinical_identity_route(patient_id: str) -> tuple[str, str, str]:
@@ -386,7 +405,10 @@ async def create_patient_idonia_link(
     if not patient:
         raise HTTPException(status_code=404, detail="Paciente no encontrado")
 
-    expose_pin = current_user["role"] == UserRole.patient
+    # Fase III (cierre de barreras): paciente y medico usan el mismo patrón QR+PIN.
+    expose_pin = current_user["role"] in {UserRole.patient, UserRole.doctor}
+    # Fase III estricta: para "report" siempre se publica el bundle completo de 3 artefactos.
+    effective_include_bundle = include_bundle or resource == "report"
 
     # Flujo clínico real del hackathon: sin fallback local para PAT-002.
     if patient_id == "PAT-002" and resource == "report":
@@ -415,10 +437,15 @@ async def create_patient_idonia_link(
             password_control={
                 "algorithm": "IDONIA_AUTO_PIN",
                 "hash_applied": False,
+                "bundle_items": {
+                    "image_study": "uploaded_or_existing_by_route",
+                    "original_report": "uploaded_or_existing_by_route",
+                    "humanized_report": "uploaded_or_existing_by_route",
+                },
                 "lopdgdd": (
                     "PIN devuelto por endpoint de Magic Link; distribuir solo por canal seguro"
                     if expose_pin
-                    else "Acceso profesional gestionado por protocolo medico; PIN no expuesto en esta respuesta"
+                    else "Acceso sin PIN en este contexto"
                 ),
             },
             created_at=datetime.now(timezone.utc),
@@ -437,7 +464,8 @@ async def create_patient_idonia_link(
             pdf_bytes = _read_phase1_report_pdf_bytes()
             file_name = "Informe_RM_RODILLA.pdf"
 
-        if include_bundle:
+        bundle_items = None
+        if effective_include_bundle:
             upload_result = await _upload_full_bundle(
                 patient_id=patient_id,
                 patient_name=patient.name,
@@ -447,6 +475,8 @@ async def create_patient_idonia_link(
                 dicom_accession_number=dicom_accession_number,
                 dicom_study_description=dicom_study_description,
             )
+            bundle_items = upload_result.get("bundle_items")
+            report_upload = upload_result.get("report_upload") or {}
         else:
             if resource == "study":
                 upload_result = await subir_estudio_idonia(
@@ -466,6 +496,7 @@ async def create_patient_idonia_link(
                     dicom_accession_number=dicom_accession_number,
                     dicom_study_description=dicom_study_description,
                 )
+            report_upload = upload_result
 
         # Fase III: el ML debe apuntar al contenedor general del estudio (carpeta), no a archivo individual.
         magic_link_info = await generar_magic_link_info(
@@ -500,11 +531,16 @@ async def create_patient_idonia_link(
             password_control={
                 "algorithm": "IDONIA_AUTO_PIN",
                 "hash_applied": False,
+                "bundle_items": {
+                    "image_study": "expected_in_idonia_viewer",
+                    "original_report": "expected_in_idonia_viewer",
+                    "humanized_report": "expected_in_idonia_viewer",
+                },
                 "lopdgdd": (
                     "Acceso devuelto en modo continuidad demo por indisponibilidad temporal del proveedor externo. "
                     "Comparte PIN por canal seguro y valida con soporte de Idonia si persiste."
                     if expose_pin
-                    else "Acceso profesional en modo continuidad demo; PIN no expuesto en esta respuesta"
+                    else "Acceso en modo continuidad demo sin PIN expuesto"
                 ),
             },
             created_at=datetime.now(timezone.utc),
@@ -520,7 +556,7 @@ async def create_patient_idonia_link(
 
     return IdoniaAccessResponse(
         status="ok",
-        file_id=str(upload_result.get("file_id") or ""),
+        file_id=str(report_upload.get("file_id") or ""),
         open_path=f"/api/reports/idonia/open/{access_id}",
         resource=resource,
         magic_link_url=magic_link,
@@ -531,10 +567,16 @@ async def create_patient_idonia_link(
         password_control={
             "algorithm": "IDONIA_AUTO_PIN",
             "hash_applied": False,
+            "bundle_items": bundle_items
+            or {
+                "image_study": "uploaded_or_existing_by_route",
+                "original_report": "uploaded_or_existing_by_route",
+                "humanized_report": "uploaded_or_existing_by_route",
+            },
             "lopdgdd": (
                 "PIN devuelto por el endpoint de creacion del Magic Link; no compartir por canal inseguro"
                 if expose_pin
-                else "Acceso profesional gestionado por protocolo medico; PIN no expuesto en esta respuesta"
+                else "Acceso sin PIN en este contexto"
             ),
         },
         created_at=datetime.now(timezone.utc),

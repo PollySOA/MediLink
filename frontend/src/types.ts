@@ -87,6 +87,11 @@ export interface IdoniaAccessResponse {
     algorithm?: string
     hash_algorithm?: string
     hash_applied?: boolean
+    bundle_items?: {
+      image_study?: string
+      original_report?: string
+      humanized_report?: string
+    }
     lopdgdd?: string
   }
   created_at: string

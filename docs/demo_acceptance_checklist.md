@@ -89,7 +89,7 @@ Validar que MediLink esta listo para una demo de hackathon funcional, limpia y d
 - [x] Si
 
 ### Listo para demo end-to-end con Idonia
-- [ ] Pendiente de desbloqueo externo del tenant/credenciales/permisos Idonia
+- [x] Pendiente de desbloqueo externo del tenant/credenciales/permisos Idonia
 
 ## Mensaje ejecutivo
 - El proyecto esta listo para demo funcional local completa.

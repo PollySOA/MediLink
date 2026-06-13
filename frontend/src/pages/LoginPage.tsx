@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { api, formatApiError } from "../services/api"
 import { useAuth } from "../context/AuthContext"
+import idoniaLogo from "../assets/idonia-logo.svg"
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -32,6 +33,7 @@ export default function LoginPage() {
     <div className="login-screen">
       <div className="login-card">
         <div className="login-logo">
+          <img src={idoniaLogo} alt="Idonia" className="login-idonia-logo" />
           <h1>Medi<span>Link</span></h1>
           <p>Interoperabilidad y Humanización Médica</p>
           <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>I Hackathon IABiomed · Reto Idonia</p>

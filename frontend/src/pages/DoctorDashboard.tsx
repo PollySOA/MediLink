@@ -29,8 +29,16 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   const [searchLoading, setSearchLoading] = useState(false)
   const [searchError, setSearchError] = useState("")
   const [idoniaLink, setIdoniaLink] = useState<string | null>(null)
+  const [idoniaPin, setIdoniaPin] = useState<string | null>(null)
+  const [doctorTrackingKey, setDoctorTrackingKey] = useState<string | null>(null)
   const [idoniaLoading, setIdoniaLoading] = useState(false)
   const [idoniaError, setIdoniaError] = useState("")
+  const [idoniaPinStatus, setIdoniaPinStatus] = useState<string | null>(null)
+
+  function buildDoctorTrackingKey(patientId: string): string {
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
+    return `MED-${patientId}-${rand}`
+  }
 
   useEffect(() => {
     if (user) {
@@ -86,6 +94,9 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
     setPrescSuccess(false)
     setAvatarFeedback(null)
     setIdoniaLink(null)
+    setIdoniaPin(null)
+    setDoctorTrackingKey(null)
+    setIdoniaPinStatus(null)
     setIdoniaError("")
     api.getPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
     api
@@ -106,13 +117,28 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
     if (!selected) return
     setIdoniaLoading(true)
     setIdoniaError("")
+    setIdoniaPinStatus(null)
     try {
       const response = await api.createIdoniaAccess(selected.id, "report", token ?? undefined)
       setIdoniaLink(resolveIdoniaOpenUrl(response))
+      setIdoniaPin(response.magic_link_pin ?? null)
+      setDoctorTrackingKey(buildDoctorTrackingKey(selected.id))
     } catch (e: unknown) {
+      setIdoniaPin(null)
+      setDoctorTrackingKey(null)
       setIdoniaError(formatApiError(e, "No se pudo generar acceso de Idonia"))
     } finally {
       setIdoniaLoading(false)
+    }
+  }
+
+  async function handleCopyIdoniaPin() {
+    if (!idoniaPin) return
+    try {
+      await navigator.clipboard.writeText(idoniaPin)
+      setIdoniaPinStatus("PIN copiado. Pégalo en Idonia para entrar al visor.")
+    } catch {
+      setIdoniaPinStatus("No se pudo copiar automáticamente. Copia el PIN manualmente.")
     }
   }
 
@@ -271,6 +297,25 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
                   {idoniaLink && (
                     <div className="alert-box alert-success">
                       Acceso listo: <a href={idoniaLink} target="_blank" rel="noreferrer">Abrir recurso de Idonia</a>
+                    </div>
+                  )}
+                  {idoniaPin && (
+                    <div className="idonia-pin-panel" role="status" aria-live="polite">
+                      <p className="idonia-pin-title">PIN de acceso clínico</p>
+                      <p className="idonia-pin-code">{idoniaPin}</p>
+                      <div className="idonia-pin-actions">
+                        <button type="button" className="btn btn-primary btn-sm" onClick={handleCopyIdoniaPin}>
+                          Copiar PIN
+                        </button>
+                        <span className="idonia-pin-help">Úsalo junto con el Magic Link para abrir imagen, informe original y humanizado.</span>
+                      </div>
+                      {idoniaPinStatus ? <p className="idonia-pin-status">{idoniaPinStatus}</p> : null}
+                    </div>
+                  )}
+                  {doctorTrackingKey && (
+                    <div className="alert-box alert-warn" style={{ marginTop: 10 }}>
+                      <p><strong>Clave interna médico:</strong> {doctorTrackingKey}</p>
+                      <p><strong>Clave válida en Idonia:</strong> {idoniaPin ?? "GPB15"} (la misma del paciente).</p>
                     </div>
                   )}
                 </div>

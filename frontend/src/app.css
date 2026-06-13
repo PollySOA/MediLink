@@ -57,6 +57,11 @@ body {
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-mark { width: 28px; height: 28px; background: var(--blue); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
 .brand-mark svg { width: 16px; height: 16px; fill: white; }
+.brand-logo {
+  height: 34px;
+  width: auto;
+  display: block;
+}
 .brand-name { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
 .brand-name span { color: var(--blue); }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
@@ -107,6 +112,51 @@ body {
 }
 .idonia-status-error { color: var(--red); }
 .idonia-status-success { color: var(--teal); }
+.idonia-pin-panel {
+  margin-top: 10px;
+  border: 2px solid #0ea5e9;
+  background: #f0f9ff;
+  border-radius: 10px;
+  padding: 12px;
+}
+.idonia-pin-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0c4a6e;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.idonia-pin-code {
+  margin-top: 6px;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.idonia-pin-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.idonia-pin-help {
+  font-size: 12px;
+  color: #0c4a6e;
+}
+.idonia-pin-status {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0369a1;
+}
+.login-idonia-logo {
+  width: min(240px, 80%);
+  height: auto;
+  margin: 0 auto 8px;
+  display: block;
+}
 
 .page-head { margin-bottom: 24px; }
 .page-title { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 4px; }

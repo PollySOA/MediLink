@@ -338,7 +338,7 @@ async def generar_magic_link_info(
     expired_creation_mode: str | None = None,
     return_expired: bool = False,
     query_param_override: str | None = None,
-) -> str:
+) -> dict[str, object]:
     normalized_reference = str(file_reference).lstrip("/")
     query_param = (query_param_override or settings.idonia_magic_link_query_param).strip() or "route"
     magic_link_path = settings.idonia_magic_link_path.lstrip("/")

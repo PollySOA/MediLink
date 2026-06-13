@@ -4,6 +4,7 @@ import LoginPage from "./pages/LoginPage"
 import DoctorDashboard from "./pages/DoctorDashboard"
 import PatientDashboard from "./pages/PatientDashboard"
 import { api, formatApiError, resolveIdoniaOpenUrl } from "./services/api"
+import idoniaLogo from "./assets/idonia-logo.svg"
 import "./app.css"
 
 type DoctorTab = "patients" | "report" | "prescribe"
@@ -16,6 +17,9 @@ function AppContent() {
   const [openingIdonia, setOpeningIdonia] = useState(false)
   const [idoniaError, setIdoniaError] = useState<string | null>(null)
   const [idoniaSuccess, setIdoniaSuccess] = useState<string | null>(null)
+  const [lastIdoniaPin, setLastIdoniaPin] = useState<string | null>(null)
+  const [lastIdoniaResource, setLastIdoniaResource] = useState<"report" | "study" | null>(null)
+  const [pinCopyStatus, setPinCopyStatus] = useState<string | null>(null)
 
   if (!user) return <LoginPage />
 
@@ -40,17 +44,32 @@ function AppContent() {
       setOpeningIdonia(true)
       setIdoniaError(null)
       setIdoniaSuccess(null)
+      setPinCopyStatus(null)
       const access = await api.createIdoniaAccess(activeUser.id, resource, token ?? undefined)
       if (access.status === "ok") {
         const openUrl = resolveIdoniaOpenUrl(access, apiBase)
         window.open(openUrl, "_blank", "noopener,noreferrer")
         const baseMessage = resource === "study" ? "Estudio radiológico preparado en Idonia" : "Informe preparado en Idonia"
-        setIdoniaSuccess(access.magic_link_pin ? `${baseMessage}. PIN: ${access.magic_link_pin}` : baseMessage)
+        setIdoniaSuccess(baseMessage)
+        setLastIdoniaPin(access.magic_link_pin ?? null)
+        setLastIdoniaResource(resource)
       }
     } catch (error) {
+      setLastIdoniaPin(null)
+      setLastIdoniaResource(null)
       setIdoniaError(formatApiError(error, "No se pudo abrir Idonia"))
     } finally {
       setOpeningIdonia(false)
+    }
+  }
+
+  async function handleCopyPin() {
+    if (!lastIdoniaPin) return
+    try {
+      await navigator.clipboard.writeText(lastIdoniaPin)
+      setPinCopyStatus("PIN copiado. Pégalo en Idonia para continuar.")
+    } catch {
+      setPinCopyStatus("No se pudo copiar automáticamente. Selecciona y copia el PIN manualmente.")
     }
   }
 
@@ -72,10 +91,8 @@ function AppContent() {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
-            <div className="brand-mark">
-              <svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm1 4v2h2a1 1 0 1 1 0 2H9v2a1 1 0 1 1-2 0V9H5a1 1 0 1 1 0-2h2V5a1 1 0 0 1 2 0z"/></svg>
-            </div>
-            <span className="brand-name">Medi<span>Link</span></span>
+            <img src={idoniaLogo} alt="Idonia" className="brand-logo" />
+            <span className="brand-name">MediLink · <span>Idonia</span></span>
           </div>
           <div className="topbar-right">
             <span className={`role-badge ${user.role}`}>
@@ -142,6 +159,21 @@ function AppContent() {
               >
                 {openingIdonia ? "⏳ Preparando Idonia..." : "🩻 Abrir estudio radiológico del paciente en Idonia"}
               </button>
+              {lastIdoniaPin ? (
+                <div className="idonia-pin-panel" role="status" aria-live="polite">
+                  <p className="idonia-pin-title">
+                    PIN para {lastIdoniaResource === "study" ? "estudio" : "informe"}
+                  </p>
+                  <p className="idonia-pin-code">{lastIdoniaPin}</p>
+                  <div className="idonia-pin-actions">
+                    <button type="button" className="btn btn-primary btn-sm" onClick={handleCopyPin}>
+                      Copiar PIN
+                    </button>
+                    <span className="idonia-pin-help">Cópialo y pégalo en la pantalla de acceso de Idonia.</span>
+                  </div>
+                  {pinCopyStatus ? <p className="idonia-pin-status">{pinCopyStatus}</p> : null}
+                </div>
+              ) : null}
               {idoniaError ? <p className="idonia-status idonia-status-error">{idoniaError}</p> : null}
               {idoniaSuccess ? <p className="idonia-status idonia-status-success">{idoniaSuccess}</p> : null}
             </div>

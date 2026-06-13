@@ -170,7 +170,15 @@ class IdoniaAccessResponse(BaseModel):
                 "magic_link_route": "Traslados desde Asturias/D210105597",
                 "magic_link_route_urlsafe": "Traslados%20desde%20Asturias%2FD210105597",
                 "magic_link_pin": "ZCBP7",
-                "password_control": {"enabled": True},
+                "password_control": {
+                    "algorithm": "IDONIA_AUTO_PIN",
+                    "hash_applied": False,
+                    "bundle_items": {
+                        "image_study": "uploaded_or_existing_by_route",
+                        "original_report": "uploaded_or_existing_by_route",
+                        "humanized_report": "uploaded_or_existing_by_route"
+                    }
+                },
                 "created_at": "2026-06-09T10:30:00Z"
             }
         }
