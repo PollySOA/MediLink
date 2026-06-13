@@ -82,7 +82,7 @@ flowchart LR
 | Rol | Acceso al visor Idonia | PIN en interfaz |
 |---|---|---|
 | Paciente | Magic Link seguro | ✅ Visible (QR+PIN) |
-| Médico | Magic Link de seguimiento profesional | ❌ Sin PIN (acceso directo) |
+| Médico | Magic Link de seguimiento profesional | ✅ Visible (QR+PIN) |
 
 ---
 
@@ -171,14 +171,7 @@ APP_ENV=development
 ## 🧪 Cuentas demo
 
 | Usuario | Password | Rol |
-|---|---|---|
-| `dr.garcia` | `demo1234` | Médico |
-| `dr.lopez` | `demo1234` | Médico |
-| `alejandro.m` | `demo1234` | Paciente |
-| `carmen.r` | `demo1234` | Paciente |
-| `rosa.f` | `demo1234` | Paciente |
 
----
 
 ## 📌 Estado del proyecto
 
