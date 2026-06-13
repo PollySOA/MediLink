@@ -27,7 +27,7 @@ from services.idonia_service import (
     subir_estudio_idonia,
     validar_whoami_idonia,
 )
-from services.recog_service import humanizar_con_recog, humanizar_con_recog_pdf_buffer
+from services.recog_service import humanizar_con_recog
 from services.service_errors import ServiceError
 from src.application.use_cases.orchestrate_patient_transfer import (
     build_pat002_clinical_identity,
@@ -470,44 +470,45 @@ async def create_patient_idonia_link(
         # Fase III: el ML debe apuntar al contenedor general del estudio (carpeta), no a archivo individual.
         magic_link_info = await generar_magic_link_info(
             magic_link_reference,
+            include_pin=expose_pin,
             expired_creation_mode=expired_creation_mode,
         )
         magic_link = str(magic_link_info["url"])
     except ServiceError as exc:
-        if expose_pin:
-            # Fallback para flujo paciente: evita bloquear UI cuando Idonia externo está degradado.
-            public_base_url = settings.idonia_magic_link_public_base_url.strip() or "https://demo.idonia.com/v/idoniahackaton"
-            demo_magic_link = f"{public_base_url}?url={quote(magic_link_reference, safe='')}"
-            demo_pin = settings.idonia_magic_link_pin.strip() or None
+        # Fallback de continuidad para ambos roles cuando proveedor externo está degradado.
+        # Paciente mantiene PIN; profesional recibe enlace limpio sin PIN.
+        public_base_url = settings.idonia_magic_link_public_base_url.strip() or "https://demo.idonia.com/v/idoniahackaton"
+        demo_magic_link = f"{public_base_url}?url={quote(magic_link_reference, safe='')}"
+        demo_pin = settings.idonia_magic_link_pin.strip() or None
 
-            access_id = uuid.uuid4().hex
-            _IDONIA_ACCESS_CACHE[access_id] = {
-                "url": demo_magic_link,
-                "created_at": datetime.now(timezone.utc),
-            }
+        access_id = uuid.uuid4().hex
+        _IDONIA_ACCESS_CACHE[access_id] = {
+            "url": demo_magic_link,
+            "created_at": datetime.now(timezone.utc),
+        }
 
-            return IdoniaAccessResponse(
-                status="ok",
-                file_id="",
-                open_path=f"/api/reports/idonia/open/{access_id}",
-                resource=resource,
-                magic_link_url=demo_magic_link,
-                magic_link_base_url=public_base_url,
-                magic_link_route=magic_link_reference,
-                magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
-                magic_link_pin=demo_pin,
-                password_control={
-                    "algorithm": "IDONIA_AUTO_PIN",
-                    "hash_applied": False,
-                    "lopdgdd": (
-                        "Acceso devuelto en modo continuidad demo por indisponibilidad temporal del proveedor externo. "
-                        "Comparte PIN por canal seguro y valida con soporte de Idonia si persiste."
-                    ),
-                },
-                created_at=datetime.now(timezone.utc),
-            )
-
-        raise HTTPException(status_code=exc.status_code, detail=exc.as_http_detail()) from exc
+        return IdoniaAccessResponse(
+            status="ok",
+            file_id="",
+            open_path=f"/api/reports/idonia/open/{access_id}",
+            resource=resource,
+            magic_link_url=demo_magic_link,
+            magic_link_base_url=public_base_url,
+            magic_link_route=magic_link_reference,
+            magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
+            magic_link_pin=demo_pin if expose_pin else None,
+            password_control={
+                "algorithm": "IDONIA_AUTO_PIN",
+                "hash_applied": False,
+                "lopdgdd": (
+                    "Acceso devuelto en modo continuidad demo por indisponibilidad temporal del proveedor externo. "
+                    "Comparte PIN por canal seguro y valida con soporte de Idonia si persiste."
+                    if expose_pin
+                    else "Acceso profesional en modo continuidad demo; PIN no expuesto en esta respuesta"
+                ),
+            },
+            created_at=datetime.now(timezone.utc),
+        )
 
     access_id = uuid.uuid4().hex
     _IDONIA_ACCESS_CACHE[access_id] = {

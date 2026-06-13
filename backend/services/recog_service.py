@@ -271,3 +271,62 @@ async def humanizar_con_recog(dictation_report: str, specialty: str | None = Non
         payload = {}
 
     return _extract_humanized_text(payload, response.text)
+
+
+async def humanizar_con_recog_pdf_buffer(dictation_report: str, specialty: str | None = None) -> bytes:
+    """
+    Devuelve el PDF humanizado de Recog como bytes sin alterarlos.
+    Flujo estricto: si no hay configuración o falla la integración, se informa error.
+    """
+    if not _is_recog_configured():
+        raise ServiceError(
+            "Recog no esta configurado para flujo PDF (falta RECOG_API_URL y auth)",
+            status_code=503,
+            code="recog_not_configured",
+        )
+
+    body = {"dictationReport": dictation_report}
+    if specialty:
+        body["specialty"] = specialty
+
+    headers = await _build_recog_headers()
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.integration_timeout_seconds) as client:
+            response = await client.post(settings.recog_api_url, headers=headers, json=body)
+    except httpx.HTTPError as exc:
+        raise ServiceError(
+            "No se pudo conectar con Recog para obtener PDF humanizado",
+            status_code=502,
+            code="recog_connection_error",
+            details={"reason": str(exc)},
+        ) from exc
+
+    if response.status_code >= 400:
+        raise ServiceError(
+            "Recog rechazo la solicitud de PDF humanizado",
+            status_code=502,
+            code="recog_http_error",
+            details={
+                "status_code": response.status_code,
+                "response": response.text[:500],
+            },
+        )
+
+    content = response.content
+    if not content:
+        raise ServiceError(
+            "Recog devolvio contenido vacio para el PDF humanizado",
+            status_code=502,
+            code="recog_empty_payload",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise ServiceError(
+            "Recog no devolvio un PDF valido para el flujo PDF",
+            status_code=502,
+            code="recog_invalid_pdf_payload",
+            details={"content_type": response.headers.get("content-type", "")},
+        )
+
+    return content

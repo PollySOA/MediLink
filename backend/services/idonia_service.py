@@ -334,6 +334,7 @@ async def generar_magic_link_info(
     file_reference: str,
     patient_password: str | None = None,
     *,
+    include_pin: bool = True,
     expired_creation_mode: str | None = None,
     return_expired: bool = False,
     query_param_override: str | None = None,
@@ -353,7 +354,7 @@ async def generar_magic_link_info(
     body: dict[str, str] = {}
     if raw_password:
         body["password"] = calcular_password_hash_idonia(raw_password)
-    if settings.idonia_magic_link_pin.strip():
+    if include_pin and settings.idonia_magic_link_pin.strip():
         body["pin"] = settings.idonia_magic_link_pin.strip()
     headers = {
         "Authorization": f"Bearer {_build_idonia_jwt()}",
@@ -383,7 +384,7 @@ async def generar_magic_link_info(
     if response.status_code == 204 or not response.text.strip():
         return {
             "url": _build_public_magic_link(normalized_reference),
-            "pin": settings.idonia_magic_link_pin.strip() or None,
+            "pin": settings.idonia_magic_link_pin.strip() if include_pin else None,
             "raw": {},
         }
 
@@ -392,13 +393,15 @@ async def generar_magic_link_info(
     except ValueError:
         return {
             "url": _build_public_magic_link(normalized_reference),
-            "pin": settings.idonia_magic_link_pin.strip() or None,
+            "pin": settings.idonia_magic_link_pin.strip() if include_pin else None,
             "raw": {},
         }
 
     link = _extract_magic_link_url(payload)
     normalized_payload = _build_magic_link_payload(payload)
-    pin = normalized_payload.get("pin") or normalized_payload.get("PIN") or settings.idonia_magic_link_pin.strip() or None
+    pin = None
+    if include_pin:
+        pin = normalized_payload.get("pin") or normalized_payload.get("PIN") or settings.idonia_magic_link_pin.strip() or None
     if not link:
         link = _build_public_magic_link(normalized_reference)
 
@@ -413,6 +416,7 @@ async def generar_magic_link(
     file_reference: str,
     patient_password: str | None = None,
     *,
+    include_pin: bool = True,
     expired_creation_mode: str | None = None,
     return_expired: bool = False,
     query_param_override: str | None = None,
@@ -420,6 +424,7 @@ async def generar_magic_link(
     result = await generar_magic_link_info(
         file_reference,
         patient_password=patient_password,
+        include_pin=include_pin,
         expired_creation_mode=expired_creation_mode,
         return_expired=return_expired,
         query_param_override=query_param_override,
