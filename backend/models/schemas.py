@@ -172,7 +172,9 @@ class IdoniaAccessResponse(BaseModel):
                 "magic_link_pin": "ZCBP7",
                 "password_control": {
                     "algorithm": "IDONIA_AUTO_PIN",
-                    "hash_applied": False,
+                    "hash_algorithm": "SHA-256",
+                    "hash_applied": True,
+                    "pin_hash": "7f70eb7e85f7d0f87d949ea9845f4be4f6f2c35f720c7ef6956f95a71ec3e93b",
                     "bundle_items": {
                         "image_study": "uploaded_or_existing_by_route",
                         "original_report": "uploaded_or_existing_by_route",

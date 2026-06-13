@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import textwrap
 import uuid
@@ -60,6 +61,19 @@ def _build_humanized_response(patient_text: str) -> HumanizedReport:
         key_findings=findings,
         recommended_actions="Sigue las indicaciones de tu medico y consulta urgencias si presentas empeoramiento.",
     )
+
+
+def _hash_pin_for_audit(pin: str | None) -> str | None:
+    if not pin:
+        return None
+    return hashlib.sha256(pin.encode("utf-8")).hexdigest()
+
+
+def _resolve_effective_demo_pin(candidate_pin: str | None) -> str | None:
+    configured_pin = settings.idonia_magic_link_pin.strip()
+    if configured_pin:
+        return configured_pin
+    return candidate_pin
 
 
 def _escape_pdf_text(value: str) -> str:
@@ -424,6 +438,7 @@ async def create_patient_idonia_link(
         }
 
         public_base_url = settings.idonia_magic_link_public_base_url.strip()
+        current_pin = _resolve_effective_demo_pin(result.get("magic_link_pin")) if expose_pin else None
         return IdoniaAccessResponse(
             status="ok",
             file_id=str(result["humanized_upload"].get("file_id") or ""),
@@ -433,10 +448,12 @@ async def create_patient_idonia_link(
             magic_link_base_url=public_base_url or None,
             magic_link_route=result["route"],
             magic_link_route_urlsafe=quote(result["route"], safe=""),
-            magic_link_pin=result["magic_link_pin"] if expose_pin else None,
+            magic_link_pin=current_pin,
             password_control={
                 "algorithm": "IDONIA_AUTO_PIN",
-                "hash_applied": False,
+                "hash_algorithm": "SHA-256",
+                "hash_applied": bool(current_pin),
+                "pin_hash": _hash_pin_for_audit(current_pin),
                 "bundle_items": {
                     "image_study": "uploaded_or_existing_by_route",
                     "original_report": "uploaded_or_existing_by_route",
@@ -518,6 +535,7 @@ async def create_patient_idonia_link(
             "created_at": datetime.now(timezone.utc),
         }
 
+        current_pin = _resolve_effective_demo_pin(demo_pin) if expose_pin else None
         return IdoniaAccessResponse(
             status="ok",
             file_id="",
@@ -527,10 +545,12 @@ async def create_patient_idonia_link(
             magic_link_base_url=public_base_url,
             magic_link_route=magic_link_reference,
             magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
-            magic_link_pin=demo_pin if expose_pin else None,
+            magic_link_pin=current_pin,
             password_control={
                 "algorithm": "IDONIA_AUTO_PIN",
-                "hash_applied": False,
+                "hash_algorithm": "SHA-256",
+                "hash_applied": bool(current_pin),
+                "pin_hash": _hash_pin_for_audit(current_pin),
                 "bundle_items": {
                     "image_study": "expected_in_idonia_viewer",
                     "original_report": "expected_in_idonia_viewer",
@@ -554,6 +574,7 @@ async def create_patient_idonia_link(
 
     public_base_url = settings.idonia_magic_link_public_base_url.strip()
 
+    current_pin = _resolve_effective_demo_pin(magic_link_info.get("pin")) if expose_pin else None
     return IdoniaAccessResponse(
         status="ok",
         file_id=str(report_upload.get("file_id") or ""),
@@ -563,10 +584,12 @@ async def create_patient_idonia_link(
         magic_link_base_url=public_base_url or None,
         magic_link_route=magic_link_reference,
         magic_link_route_urlsafe=quote(magic_link_reference, safe=""),
-        magic_link_pin=magic_link_info.get("pin") if expose_pin else None,
+        magic_link_pin=current_pin,
         password_control={
             "algorithm": "IDONIA_AUTO_PIN",
-            "hash_applied": False,
+            "hash_algorithm": "SHA-256",
+            "hash_applied": bool(current_pin),
+            "pin_hash": _hash_pin_for_audit(current_pin),
             "bundle_items": bundle_items
             or {
                 "image_study": "uploaded_or_existing_by_route",

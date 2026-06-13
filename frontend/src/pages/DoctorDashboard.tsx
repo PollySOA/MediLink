@@ -30,15 +30,9 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   const [searchError, setSearchError] = useState("")
   const [idoniaLink, setIdoniaLink] = useState<string | null>(null)
   const [idoniaPin, setIdoniaPin] = useState<string | null>(null)
-  const [doctorTrackingKey, setDoctorTrackingKey] = useState<string | null>(null)
   const [idoniaLoading, setIdoniaLoading] = useState(false)
   const [idoniaError, setIdoniaError] = useState("")
   const [idoniaPinStatus, setIdoniaPinStatus] = useState<string | null>(null)
-
-  function buildDoctorTrackingKey(patientId: string): string {
-    const rand = Math.random().toString(36).slice(2, 6).toUpperCase()
-    return `MED-${patientId}-${rand}`
-  }
 
   useEffect(() => {
     if (user) {
@@ -95,7 +89,6 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
     setAvatarFeedback(null)
     setIdoniaLink(null)
     setIdoniaPin(null)
-    setDoctorTrackingKey(null)
     setIdoniaPinStatus(null)
     setIdoniaError("")
     api.getPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
@@ -122,10 +115,8 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
       const response = await api.createIdoniaAccess(selected.id, "report", token ?? undefined)
       setIdoniaLink(resolveIdoniaOpenUrl(response))
       setIdoniaPin(response.magic_link_pin ?? null)
-      setDoctorTrackingKey(buildDoctorTrackingKey(selected.id))
     } catch (e: unknown) {
       setIdoniaPin(null)
-      setDoctorTrackingKey(null)
       setIdoniaError(formatApiError(e, "No se pudo generar acceso de Idonia"))
     } finally {
       setIdoniaLoading(false)
@@ -310,12 +301,6 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
                         <span className="idonia-pin-help">Úsalo junto con el Magic Link para abrir imagen, informe original y humanizado.</span>
                       </div>
                       {idoniaPinStatus ? <p className="idonia-pin-status">{idoniaPinStatus}</p> : null}
-                    </div>
-                  )}
-                  {doctorTrackingKey && (
-                    <div className="alert-box alert-warn" style={{ marginTop: 10 }}>
-                      <p><strong>Clave interna médico:</strong> {doctorTrackingKey}</p>
-                      <p><strong>Clave válida en Idonia:</strong> {idoniaPin ?? "GPB15"} (la misma del paciente).</p>
                     </div>
                   )}
                 </div>

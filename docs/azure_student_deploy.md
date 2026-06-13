@@ -101,7 +101,15 @@ Publicar la carpeta:
 Si no usas Static Web Apps:
 - Crear App Service Node
 - Build command: `npm install && npm run build`
-- Publicar `dist` con un servidor estatico o usar SWA es preferible
+- Publicar el contenido de `dist` en `/home/site/wwwroot`
+- Startup command recomendado para Linux App Service:
+
+```bash
+pm2 serve /home/site/wwwroot --no-daemon --spa
+```
+
+- No usar `npm start` si el proyecto no define ese script en `package.json`.
+- SWA sigue siendo preferible para frontend estatico.
 
 ## Orden recomendado de despliegue
 1. Backend
