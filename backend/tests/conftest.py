@@ -77,7 +77,7 @@ def auth_token_doctor():
         "name": "Dr. Carlos García",
         "exp": datetime.utcnow() + timedelta(hours=24),
     }
-    return jwt.encode(payload, "change-this-in-production", algorithm="HS256")
+    return jwt.encode(payload, "test-secret-key", algorithm="HS256")
 
 
 @pytest.fixture
@@ -93,4 +93,4 @@ def auth_token_patient():
         "patient_id": "PAT-001",
         "exp": datetime.utcnow() + timedelta(hours=24),
     }
-    return jwt.encode(payload, "change-this-in-production", algorithm="HS256")
+    return jwt.encode(payload, "test-secret-key", algorithm="HS256")
