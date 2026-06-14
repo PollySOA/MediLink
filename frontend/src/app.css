@@ -742,7 +742,7 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--b
 
   .avatar-wrap {
     height: auto;
-    min-height: 728px;
+    min-height: 780px;
   }
 }
 
@@ -889,6 +889,10 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--b
 
   .avatar-meta-pill {
     margin-left: 0;
+  }
+
+  .avatar-wrap {
+    min-height: 780px;
   }
 
   .chat-messages {
