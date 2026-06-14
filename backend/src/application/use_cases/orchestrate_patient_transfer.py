@@ -7,8 +7,6 @@ from src.domain.entities import ClinicalIdentity, ClinicalOrchestrationResult
 from src.domain.interfaces import IdoniaGateway, RecogGateway
 from src.infrastructure.config.settings import get_settings
 
-settings = get_settings()
-
 
 def build_pat002_clinical_identity() -> ClinicalIdentity:
     patient = PATIENT_MAP.get("PAT-002")
@@ -50,6 +48,7 @@ def read_required_phase1_report_bytes() -> bytes:
 
 
 def read_required_study_bytes() -> tuple[str, bytes, str]:
+    settings = get_settings()
     raw_path = settings.idonia_source_study_file_path.strip()
     if not raw_path:
         raise ServiceError(

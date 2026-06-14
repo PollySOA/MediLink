@@ -60,13 +60,12 @@ def test_avatar_message_response_structure():
     from models.schemas import AvatarMessageResponse
     
     response = AvatarMessageResponse(
-        message="Hola, soy Elena",
-        suggestions=["¿Qué significa mi diagnóstico?", "¿Cómo tomar medicación?"],
+        justificacion_seguridad="Respuesta basada en el informe clínico del paciente.",
+        respuesta_voz="Hola Carolina, estoy aquí para ayudarte.",
     )
     
-    assert response.message == "Hola, soy Elena"
-    assert len(response.suggestions) == 2
-    assert isinstance(response.suggestions, list)
+    assert response.justificacion_seguridad == "Respuesta basada en el informe clínico del paciente."
+    assert response.respuesta_voz == "Hola Carolina, estoy aquí para ayudarte."
 
 
 def test_prescription_schema():
@@ -98,20 +97,16 @@ def test_idonia_access_response():
     
     response = IdoniaAccessResponse(
         magic_link_url="https://idonia.com/viewer?token=abc123",
-        pin="123456",
-        valid_until="2026-06-15T12:00:00",
-        patient_name="Alejandro Martín",
         status="completed",
         file_id="file123",
         open_path="/viewer/doc",
-        resource="document.pdf",
+        resource="report",
         created_at="2026-06-14T10:00:00",
     )
     
-    assert response.pin == "123456"
     assert "idonia.com" in response.magic_link_url
-    assert response.patient_name == "Alejandro Martín"
     assert response.status == "completed"
+    assert response.resource == "report"
 
 
 def test_error_response_schema():
@@ -119,12 +114,13 @@ def test_error_response_schema():
     from models.schemas import ErrorResponse
     
     error = ErrorResponse(
-        error="validation_error",
-        detail="Invalid patient ID format",
+        code="validation_error",
+        message="Invalid patient ID format",
+        trace_id="abc123",
     )
     
-    assert error.error == "validation_error"
-    assert "Invalid patient ID" in error.detail
+    assert error.code == "validation_error"
+    assert "Invalid patient ID" in error.message
 
 
 def test_token_response():

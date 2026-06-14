@@ -11,3 +11,12 @@ globalThis.import = {
     },
   },
 } as any;
+
+// Mock HTMLCanvasElement.getContext for jsdom (canvas is not implemented in jsdom)
+HTMLCanvasElement.prototype.getContext = jest.fn().mockReturnValue({
+  clearRect: jest.fn(),
+  fillRect: jest.fn(),
+  beginPath: jest.fn(),
+  roundRect: jest.fn(),
+  fill: jest.fn(),
+});

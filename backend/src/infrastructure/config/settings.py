@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     recog_auth_base_url: str = "https://api.recog.es/auth"
     recog_client_id: str = ""
     recog_client_secret: str = ""
-    recog_strict_mode: bool = True
+    recog_strict_mode: bool = False
 
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""

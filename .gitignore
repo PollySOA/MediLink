@@ -9,6 +9,7 @@ backend/.env
 # Frontend dependencies and build artifacts
 frontend/node_modules/
 frontend/dist/
+frontend/coverage/
 
 # Common logs/cache
 *.log

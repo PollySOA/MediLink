@@ -2,6 +2,7 @@
 Pytest configuration and shared fixtures for MediLink backend tests.
 """
 import sys
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,12 @@ from fastapi.testclient import TestClient
 # Add parent directory to path to import backend modules
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
+
+# Ensure backend startup validation does not fail during tests.
+os.environ.setdefault("IDONIA_API_SECRET", "S2-test-secret")
+os.environ.setdefault("RECOG_API_KEY", "rrk_test_testsecret")
+os.environ.setdefault("RECOG_STRICT_MODE", "true")
+os.environ.setdefault("JWT_SECRET", "test-secret-key")
 
 
 @pytest.fixture
@@ -24,7 +31,7 @@ def mock_settings():
     """Mock settings for testing."""
     from config import Settings
     return Settings(
-        jwt_secret="test-secret-key",
+        jwt_secret="change-this-in-production",
         idonia_api_key="test-key",
         idonia_api_secret="test-secret",
         azure_openai_api_key="test-azure-key",
@@ -61,11 +68,11 @@ def sample_prescription_data():
 @pytest.fixture
 def auth_token_doctor():
     """Generate valid JWT token for doctor role."""
-    import jwt
+    from jose import jwt
     from datetime import datetime, timedelta
     
     payload = {
-        "sub": "dr.garcia",
+        "sub": "DOC-001",
         "role": "doctor",
         "name": "Dr. Carlos García",
         "exp": datetime.utcnow() + timedelta(hours=24),
@@ -76,13 +83,13 @@ def auth_token_doctor():
 @pytest.fixture
 def auth_token_patient():
     """Generate valid JWT token for patient role."""
-    import jwt
+    from jose import jwt
     from datetime import datetime, timedelta
     
     payload = {
-        "sub": "alejandro.m",
+        "sub": "PAT-001",
         "role": "patient",
-        "name": "Alejandro Martín",
+        "name": "Carmen Rodríguez Vega",
         "patient_id": "PAT-001",
         "exp": datetime.utcnow() + timedelta(hours=24),
     }
