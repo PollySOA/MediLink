@@ -742,7 +742,7 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--b
 
   .avatar-wrap {
     height: auto;
-    min-height: 560px;
+    min-height: 728px;
   }
 }
 
