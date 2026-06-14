@@ -5,6 +5,7 @@ import DoctorDashboard from "./pages/DoctorDashboard"
 import PatientDashboard from "./pages/PatientDashboard"
 import { api, formatApiError, resolveIdoniaOpenUrl } from "./services/api"
 import idoniaLogo from "./assets/idonia-logo.svg"
+import elenaAvatar from "./assets/elena.jpeg"
 import "./app.css"
 
 type DoctorTab = "patients" | "report" | "prescribe"
@@ -14,6 +15,7 @@ function AppContent() {
   const { user, token, logout } = useAuth()
   const [doctorTab, setDoctorTab] = useState<DoctorTab>("patients")
   const [patientTab, setPatientTab] = useState<PatientTab>("elena")
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [openingIdonia, setOpeningIdonia] = useState(false)
   const [idoniaError, setIdoniaError] = useState<string | null>(null)
   const [idoniaSuccess, setIdoniaSuccess] = useState<string | null>(null)
@@ -38,18 +40,28 @@ function AppContent() {
   ]
 
   async function handleOpenIdonia(resource: "report" | "study") {
-    if (activeUser.role !== "patient") return
+    if (activeUser.role !== "patient" || openingIdonia) return // Prevenir doble-click
 
     try {
       setOpeningIdonia(true)
       setIdoniaError(null)
       setIdoniaSuccess(null)
       setPinCopyStatus(null)
-      const access = await api.createIdoniaAccess(activeUser.id, resource, token ?? undefined)
+      
+      // Timeout de 30 segundos para evitar esperas infinitas
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Tiempo de espera agotado. Intenta de nuevo.")), 30000)
+      )
+      
+      const access = await Promise.race([
+        api.createIdoniaAccess(activeUser.id, resource, token ?? undefined),
+        timeoutPromise
+      ]) as Awaited<ReturnType<typeof api.createIdoniaAccess>>
+      
       if (access.status === "ok") {
         const openUrl = resolveIdoniaOpenUrl(access, apiBase)
         window.open(openUrl, "_blank", "noopener,noreferrer")
-        const baseMessage = resource === "study" ? "Estudio radiológico preparado en Idonia" : "Informe preparado en Idonia"
+        const baseMessage = resource === "study" ? "✅ Estudio radiológico preparado en Idonia" : "✅ Informe preparado en Idonia"
         setIdoniaSuccess(baseMessage)
         setLastIdoniaPin(access.magic_link_pin ?? null)
         setLastIdoniaResource(resource)
@@ -57,7 +69,10 @@ function AppContent() {
     } catch (error) {
       setLastIdoniaPin(null)
       setLastIdoniaResource(null)
-      setIdoniaError(formatApiError(error, "No se pudo abrir Idonia"))
+      const errorMessage = error instanceof Error && error.message.includes("Tiempo de espera") 
+        ? error.message 
+        : formatApiError(error, "No se pudo abrir Idonia")
+      setIdoniaError(errorMessage)
     } finally {
       setOpeningIdonia(false)
     }
@@ -88,8 +103,19 @@ function AppContent() {
 
   return (
     <div className="app-layout">
-      <header className="topbar">
+      <a href="#main-content" className="skip-link" style={{ position: "absolute", top: "-40px", left: 0, background: "var(--blue)", color: "white", padding: "8px 16px", textDecoration: "none", zIndex: 9999 }}>Saltar al contenido</a>
+      <header className="topbar" role="banner">
         <div className="topbar-inner">
+          <button 
+            className="mobile-menu-toggle"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? "Cerrar menú" : "Abrir menú"}
+            aria-expanded={mobileMenuOpen}
+          >
+            <span className="hamburger-icon">
+              {mobileMenuOpen ? "✕" : "☰"}
+            </span>
+          </button>
           <div className="brand">
             <img src={idoniaLogo} alt="Idonia" className="brand-logo" />
             <span className="brand-name">MediLink · <span>Idonia</span></span>
@@ -99,13 +125,32 @@ function AppContent() {
               {user.role === "doctor" ? "Médico" : "Paciente"}
             </span>
             <span className="user-name">{user.full_name}</span>
-            <button className="btn btn-ghost btn-sm" onClick={logout}>Salir</button>
+            <button className="btn btn-ghost btn-sm" onClick={logout} aria-label="Cerrar sesión">Salir</button>
           </div>
         </div>
       </header>
 
       <div className="app-shell">
-        <aside className="sidebar">
+        {mobileMenuOpen && (
+          <div 
+            className="mobile-overlay" 
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+        <aside 
+          className={`sidebar ${mobileMenuOpen ? "sidebar-open" : ""}`} 
+          role="navigation" 
+          aria-label="Menú de navegación"
+          aria-hidden={mobileMenuOpen ? "false" : "true"}
+        >
+          <button 
+            className="sidebar-close"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Cerrar menú"
+          >
+            ✕
+          </button>
           <div className="nav-section">
             <p className="nav-label">{user.role === "doctor" ? "Panel médico" : "Mi salud"}</p>
             {user.role === "doctor" ? (
@@ -115,7 +160,12 @@ function AppContent() {
                     key={item.key}
                     type="button"
                     className={`nav-item nav-icon ${doctorTab === item.key ? "active" : ""}`}
-                    onClick={() => setDoctorTab(item.key)}
+                    onClick={() => {
+                      setDoctorTab(item.key)
+                      setMobileMenuOpen(false)
+                    }}
+                    aria-current={doctorTab === item.key ? "page" : undefined}
+                    aria-label={item.label}
                   >
                     {item.label}
                   </button>
@@ -128,9 +178,21 @@ function AppContent() {
                     key={item.key}
                     type="button"
                     className={`nav-item nav-icon ${patientTab === item.key ? "active" : ""}`}
-                    onClick={() => setPatientTab(item.key)}
+                    onClick={() => {
+                      setPatientTab(item.key)
+                      setMobileMenuOpen(false)
+                    }}
+                    aria-current={patientTab === item.key ? "page" : undefined}
+                    aria-label={item.label}
                   >
-                    {item.label}
+                    {item.key === "elena" ? (
+                      <>
+                        <img src={elenaAvatar} alt="" className="nav-avatar-img" />
+                        {" Elena (asistente orientativo)"}
+                      </>
+                    ) : (
+                      item.label
+                    )}
                   </button>
                 ))}
               </>
@@ -148,16 +210,18 @@ function AppContent() {
                 className="nav-item nav-icon"
                 onClick={() => handleOpenIdonia("report")}
                 disabled={openingIdonia}
+                style={openingIdonia ? { opacity: 0.6, cursor: "wait" } : undefined}
               >
-                {openingIdonia ? "⏳ Preparando Idonia..." : "🔗 Abrir informe del paciente en Idonia"}
+                {openingIdonia ? "⏳ Preparando informe... (puede tardar 10-15 seg)" : "🔗 Abrir informe del paciente en Idonia"}
               </button>
               <button
                 type="button"
                 className="nav-item nav-icon"
                 onClick={() => handleOpenIdonia("study")}
                 disabled={openingIdonia}
+                style={openingIdonia ? { opacity: 0.6, cursor: "wait" } : undefined}
               >
-                {openingIdonia ? "⏳ Preparando Idonia..." : "🩻 Abrir estudio radiológico del paciente en Idonia"}
+                {openingIdonia ? "⏳ Preparando estudio... (puede tardar 10-15 seg)" : "🩻 Abrir estudio radiológico del paciente en Idonia"}
               </button>
               {lastIdoniaPin ? (
                 <div className="idonia-pin-panel" role="status" aria-live="polite">
@@ -180,7 +244,7 @@ function AppContent() {
           ) : null}
         </aside>
 
-        <main className="main-area">
+        <main className="main-area" id="main-content" role="main">
           <div className="page-head">
             {user.role === "doctor" ? (
               <>

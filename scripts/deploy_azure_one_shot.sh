@@ -7,8 +7,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_SCRIPT="$ROOT_DIR/scripts/deploy_backend_one_shot.sh"
 FRONTEND_SCRIPT="$ROOT_DIR/scripts/deploy_frontend_one_shot.sh"
-RESOURCE_GROUP="${RESOURCE_GROUP:-rg-medilink-policy-frc}"
-BACKEND_WEBAPP_NAME="${BACKEND_WEBAPP_NAME:-app-medilink-api-fr-06111153}"
+RESOURCE_GROUP="${RESOURCE_GROUP:?ERROR: RESOURCE_GROUP environment variable not set. Please export RESOURCE_GROUP=your-rg}"
+BACKEND_WEBAPP_NAME="${BACKEND_WEBAPP_NAME:?ERROR: BACKEND_WEBAPP_NAME environment variable not set. Please export BACKEND_WEBAPP_NAME=your-backend-webapp}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then

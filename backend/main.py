@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routers import reports, patients, fhir, demo, auth, doctor, avatar, idonia_v1
+from config import get_settings
 
 app = FastAPI(
     title="MediLink — Interoperabilidad y Humanización Médica",
@@ -12,15 +13,14 @@ app = FastAPI(
     version="2.0.0",
 )
 
+settings = get_settings()
+
+# Parse allowed origins from comma-separated string
+allowed_origins_list = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://app-medilink-web-fr-06111223.azurewebsites.net",
-    ],
+    allow_origins=allowed_origins_list,
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],

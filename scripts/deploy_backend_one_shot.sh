@@ -6,8 +6,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="${BACKEND_DIR:-$ROOT_DIR/backend}"
-RESOURCE_GROUP="${RESOURCE_GROUP:-rg-medilink-policy-frc}"
-WEBAPP_NAME="${WEBAPP_NAME:-app-medilink-api-fr-06111153}"
+RESOURCE_GROUP="${RESOURCE_GROUP:?ERROR: RESOURCE_GROUP environment variable not set. Please export RESOURCE_GROUP=your-rg}"
+WEBAPP_NAME="${WEBAPP_NAME:?ERROR: WEBAPP_NAME environment variable not set. Please export WEBAPP_NAME=your-webapp}"
 STARTUP_CMD="python -m uvicorn main:app --host 0.0.0.0 --port 8000"
 SMOKE_USER="${SMOKE_USER:-dr.garcia}"
 SMOKE_PASSWORD="${SMOKE_PASSWORD:-demo1234}"

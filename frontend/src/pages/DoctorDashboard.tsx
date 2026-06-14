@@ -33,6 +33,7 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   const [idoniaLoading, setIdoniaLoading] = useState(false)
   const [idoniaError, setIdoniaError] = useState("")
   const [idoniaPinStatus, setIdoniaPinStatus] = useState<string | null>(null)
+  const [initialLoading, setInitialLoading] = useState(true)
   const selectedCanEdit = Boolean(selected && user && selected.assigned_doctor_id === user.id)
 
   useEffect(() => {
@@ -42,13 +43,16 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
   }, [user, token])
 
   async function reloadMyPatients() {
+    setInitialLoading(true)
     try {
       const data = await api.getDoctorPatients(token ?? undefined)
       setPatients(data)
       setSearchMeta(null)
       setSearchError("")
     } catch (e: unknown) {
-      setSearchError(formatApiError(e, "No se pudieron cargar tus pacientes"))
+      setSearchError(formatApiError(e, "No se pudieron cargar los pacientes"))
+    } finally {
+      setInitialLoading(false)
     }
   }
 
@@ -95,14 +99,18 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
     setIdoniaError("")
 
     if (p.assigned_doctor_id === user?.id) {
-      api.getPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
-      api
-        .getAvatarFeedbackSummary(p.id, token ?? undefined)
-        .then(setAvatarFeedback)
-        .catch((e: unknown) => {
-          setAvatarFeedback(null)
-          setSearchError(formatApiError(e, "No se pudieron cargar las valoraciones del asistente"))
-        })
+      // Paralelizar llamadas para mejorar rendimiento
+      Promise.all([
+        api.getPatientPrescriptions(p.id, token ?? undefined),
+        api.getAvatarFeedbackSummary(p.id, token ?? undefined)
+      ]).then(([prescriptionsData, feedbackData]) => {
+        setPrescriptions(prescriptionsData)
+        setAvatarFeedback(feedbackData)
+      }).catch((e: unknown) => {
+        setPrescriptions([])
+        setAvatarFeedback(null)
+        setSearchError(formatApiError(e, "No se pudieron cargar los datos del paciente"))
+      })
       return
     }
 
@@ -187,6 +195,13 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
 
       {activeTab === "patients" && (
         <div className="stack">
+          {initialLoading ? (
+            <div style={{ textAlign: "center", padding: "60px 20px" }}>
+              <div style={{ fontSize: "48px", marginBottom: "16px" }}>⏳</div>
+              <p style={{ fontSize: "16px", color: "var(--text-2)" }}>Cargando lista de pacientes...</p>
+            </div>
+          ) : (
+            <>
           <div className="card">
             <p className="card-head">Busqueda clinica</p>
             <div className="row" style={{ gap: 8, alignItems: "center" }}>
@@ -208,10 +223,21 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
                 {searchMeta.total} resultado(s) · pagina {searchMeta.page} · tamano {searchMeta.page_size}
               </p>
             )}
-            {searchError && <p className="error-msg" style={{ marginTop: 8 }}>{searchError}</p>}
+            {searchError && <p className="error-msg" style={{ marginTop: 8 }} role="alert">{searchError}</p>}
           </div>
 
-          {patients.map(p => (
+          {patients.length === 0 && !searchLoading ? (
+            <div className="empty-state" role="status">
+              <div className="empty-state-icon">📋</div>
+              <h3 className="empty-state-title">No hay pacientes</h3>
+              <p className="empty-state-text">
+                {searchTerm 
+                  ? "No se encontraron pacientes con ese criterio. Intenta otra búsqueda."
+                  : "Aún no tienes pacientes asignados. Los pacientes aparecerán aquí cuando sean asignados a tu consulta."}
+              </p>
+            </div>
+          ) : (
+            patients.map(p => (
             <div key={p.id} className="card patient-card" style={{ cursor: "pointer", border: selected?.id === p.id ? "2px solid var(--blue)" : undefined }}
               onClick={() => selectPatient(p)}>
               <div className="row" style={{ justifyContent: "space-between" }}>
@@ -235,7 +261,7 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
                 </button>
               </div>
             </div>
-          ))}
+          )))}
           {selected && avatarFeedback && (
             <div className="card">
               <p className="card-head">Valoración de Elena</p>
@@ -261,6 +287,8 @@ export default function DoctorDashboard({ activeTab, onTabChange }: DoctorDashbo
                 ))}
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}

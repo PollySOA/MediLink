@@ -173,6 +173,82 @@ APP_ENV=development
 | Usuario | Password | Rol |
 
 
-## 📌 Estado del proyecto
+## � Despliegue en Azure
+
+### Prerrequisitos
+- Azure CLI instalado y autenticado (`az login`)
+- Azure App Services configurados (backend + frontend)
+- App Settings configurados en Azure Portal con todas las variables de entorno
+
+### Configuración de Deployment
+
+1. **Copiar template de configuración:**
+   ```bash
+   cp .env.deployment.example .env.deployment
+   ```
+
+2. **Editar `.env.deployment` con tus recursos Azure:**
+   ```bash
+   # Azure Resource Group
+   export RESOURCE_GROUP=tu-resource-group
+   
+   # Backend Web App
+   export WEBAPP_NAME=tu-backend-webapp
+   export BACKEND_WEBAPP_NAME=tu-backend-webapp
+   
+   # Backend URL (para build de frontend)
+   export BACKEND_API_URL=https://tu-backend.azurewebsites.net
+   ```
+
+3. **Cargar variables de entorno:**
+   ```bash
+   source .env.deployment
+   ```
+
+### Despliegue Backend
+
+```bash
+# Cargar configuración
+source .env.deployment
+
+# Desplegar backend a Azure
+bash scripts/deploy_backend_one_shot.sh
+```
+
+### Despliegue Frontend
+
+```bash
+# Cargar configuración (si no está cargada)
+source .env.deployment
+
+# Actualizar WEBAPP_NAME para frontend
+export WEBAPP_NAME=tu-frontend-webapp
+
+# Desplegar frontend a Azure
+bash scripts/deploy_frontend_one_shot.sh
+```
+
+### Despliegue Full-Stack (ambos)
+
+```bash
+# Cargar configuración
+source .env.deployment
+
+# Desplegar backend + frontend automáticamente
+bash scripts/deploy_azure_one_shot.sh
+```
+
+### Notas de Seguridad
+
+- ⚠️ **NUNCA** commitear `.env.deployment` (está en `.gitignore`)
+- ✅ Usar `.env.deployment.example` como plantilla
+- ✅ Los scripts validan que todas las variables requeridas estén configuradas
+- ✅ Secretos (API keys, tokens) se configuran en Azure App Settings, NO en código
+
+Para más detalles de seguridad, ver [SECURITY.md](SECURITY.md).
+
+---
+
+## �📌 Estado del proyecto
 
 MediLink + Elena está diseñado para demostrar **viabilidad técnica inmediata** en entorno de hackatón y **escalabilidad a producto real** con foco en interoperabilidad, seguridad y experiencia humana del paciente.

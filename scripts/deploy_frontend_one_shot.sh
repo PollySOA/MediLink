@@ -6,9 +6,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="${FRONTEND_DIR:-$ROOT_DIR/frontend}"
-RESOURCE_GROUP="${RESOURCE_GROUP:-rg-medilink-policy-frc}"
-WEBAPP_NAME="${WEBAPP_NAME:-app-medilink-web-fr-06111223}"
-BACKEND_API_URL="${BACKEND_API_URL:-https://app-medilink-api-fr-06111153.azurewebsites.net}"
+RESOURCE_GROUP="${RESOURCE_GROUP:?ERROR: RESOURCE_GROUP environment variable not set. Please export RESOURCE_GROUP=your-rg}"
+WEBAPP_NAME="${WEBAPP_NAME:?ERROR: WEBAPP_NAME environment variable not set. Please export WEBAPP_NAME=your-webapp}"
+BACKEND_API_URL="${BACKEND_API_URL:?ERROR: BACKEND_API_URL environment variable not set. Please export BACKEND_API_URL=https://your-backend.azurewebsites.net}"
 SMOKE_CHECKS="${SMOKE_CHECKS:-5}"
 STARTUP_CMD="pm2 serve /home/site/wwwroot --no-daemon --spa"
 

@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 480
 
     app_env: str = "development"
+    
+    # CORS: comma-separated list of allowed origins
+    allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
 
     class Config:
         env_file = ".env"

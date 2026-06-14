@@ -4,6 +4,7 @@ import { api, formatApiError } from "../services/api"
 import type { FictionalPatient, Prescription, AvatarMessage, ProcessedReport } from "../types"
 import VoiceButton from "../components/VoiceButton"
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder"
+import elenaAvatar from "../assets/elena.jpeg"
 
 type Tab = "myinfo" | "report" | "prescriptions" | "elena"
 
@@ -27,6 +28,8 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
   const [selectedRating, setSelectedRating] = useState<number | null>(null)
   const [feedbackComment, setFeedbackComment] = useState("")
   const [uiError, setUiError] = useState<string | null>(null)
+  const [greetingLoaded, setGreetingLoaded] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   function escapeRegExp(value: string): string {
@@ -60,16 +63,47 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
 
   useEffect(() => {
     if (!user) return
-    api.getPatient(user.id, token ?? undefined).then(p => {
-      setPatient(p)
-      api.getOwnPatientPrescriptions(p.id, token ?? undefined).then(setPrescriptions)
-      loadGreeting(p.id, p.name)
+    setInitialLoading(true)
+    
+    // Timeout de 15 segundos para la carga inicial
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("La carga está tardando más de lo normal. Verifica tu conexión.")), 15000)
+    )
+    
+    // Paralelizar llamadas para mejorar rendimiento
+    Promise.race([
+      Promise.all([
+        api.getPatient(user.id, token ?? undefined),
+        api.getOwnPatientPrescriptions(user.id, token ?? undefined)
+      ]),
+      timeoutPromise
+    ]).then((result) => {
+      if (Array.isArray(result)) {
+        const [patientData, prescriptionsData] = result
+        setPatient(patientData)
+        setPrescriptions(prescriptionsData)
+      }
+    }).catch((error) => {
+      const errorMessage = error instanceof Error && error.message.includes("tardando") 
+        ? error.message 
+        : "No se pudieron cargar tus datos"
+      setUiError(errorMessage)
+    }).finally(() => {
+      setInitialLoading(false)
     })
-  }, [user])
+  }, [user, token])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
+
+  // Lazy loading: cargar greeting solo cuando se entre al tab de Elena
+  useEffect(() => {
+    if (activeTab === "elena" && !greetingLoaded && patient && messages.length === 0) {
+      setGreetingLoaded(true)
+      loadGreeting(patient.id, patient.name)
+    }
+  }, [activeTab, greetingLoaded, patient, messages.length])
 
   async function loadGreeting(patientId: string, patientName?: string) {
     try {
@@ -166,11 +200,34 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
 
   return (
     <div>
+      {initialLoading ? (
+        <div style={{ textAlign: "center", padding: "60px 20px" }}>
+          <div style={{ 
+            fontSize: "48px", 
+            marginBottom: "16px",
+            animation: "pulse 1.5s ease-in-out infinite"
+          }}>⏳</div>
+          <p style={{ fontSize: "16px", color: "var(--text-2)", marginBottom: "8px" }}>Cargando tus datos...</p>
+          <p style={{ fontSize: "13px", color: "var(--text-3)" }}>Esto puede tardar unos segundos</p>
+          <style>{`
+            @keyframes pulse {
+              0%, 100% { opacity: 1; transform: scale(1); }
+              50% { opacity: 0.5; transform: scale(1.1); }
+            }
+          `}</style>
+        </div>
+      ) : (
+        <>
       <div className="tab-strip">
         {tabs.map(t => (
           <button key={t.key} onClick={() => onTabChange(t.key)}
             className={`btn ${activeTab === t.key ? "btn-teal" : "btn-ghost"}`}>
-            {t.icon} {t.label}
+            {t.key === "elena" ? (
+              <img src={elenaAvatar} alt="" className="tab-avatar-img" />
+            ) : (
+              t.icon + " "
+            )}
+            {t.label}
           </button>
         ))}
       </div>
@@ -184,7 +241,13 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
           )}
           <div className="avatar-header">
             <div className="avatar-face">
-              👩‍⚕️
+              <img 
+                src={elenaAvatar} 
+                alt="Elena, asistente médica virtual"
+                className="avatar-image"
+                width="58"
+                height="58"
+              />
               <div className="avatar-online" />
             </div>
             <div className="avatar-info">
@@ -197,9 +260,49 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
           </div>
 
           <div className="chat-messages">
+            {messages.length === 0 && (
+              <div className="avatar-welcome" role="status">
+                <div className="avatar-welcome-icon">👋</div>
+                <h4>¡Hola! Soy Elena, tu asistenta médica virtual</h4>
+                <p className="avatar-welcome-text">
+                  Estoy aquí para ayudarte a entender tu informe y medicación con palabras sencillas. 
+                  Pregúntame lo que necesites:
+                </p>
+                <div className="avatar-examples">
+                  <button 
+                    className="avatar-example-btn" 
+                    onClick={() => sendMessage("¿Qué significa mi diagnóstico?")}
+                    aria-label="Ejemplo de pregunta sobre diagnóstico"
+                  >
+                    💬 ¿Qué significa mi diagnóstico?
+                  </button>
+                  <button 
+                    className="avatar-example-btn" 
+                    onClick={() => sendMessage("¿Cómo debo tomar mi medicación?")}
+                    aria-label="Ejemplo de pregunta sobre medicación"
+                  >
+                    💊 ¿Cómo debo tomar mi medicación?
+                  </button>
+                  <button 
+                    className="avatar-example-btn" 
+                    onClick={() => sendMessage("¿Qué cuidados debo tener?")}
+                    aria-label="Ejemplo de pregunta sobre cuidados"
+                  >
+                    ✨ ¿Qué cuidados debo tener?
+                  </button>
+                </div>
+                <p className="avatar-disclaimer">
+                  <small>💡 Recuerda: Esta información es orientativa. Ante dudas, consulta siempre con tu médico.</small>
+                </p>
+              </div>
+            )}
             {messages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
-                {m.role === "assistant" && <div className="msg-avatar">👩‍⚕️</div>}
+                {m.role === "assistant" && (
+                  <div className="msg-avatar">
+                    <img src={elenaAvatar} alt="Elena" className="msg-avatar-img" />
+                  </div>
+                )}
                 <div>
                   <div className="msg-bubble">{m.content}</div>
                   <p className="msg-time">{m.timestamp.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}</p>
@@ -208,7 +311,9 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
             ))}
             {chatLoading && (
               <div className="msg assistant">
-                <div className="msg-avatar">👩‍⚕️</div>
+                <div className="msg-avatar">
+                  <img src={elenaAvatar} alt="Elena" className="msg-avatar-img" />
+                </div>
                 <div className="msg-bubble" style={{ color: "var(--text-3)" }}>Elena está escribiendo...</div>
               </div>
             )}
@@ -317,8 +422,17 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
 
       {activeTab === "prescriptions" && (
         <div className="stack">
-          {prescriptions.length === 0 && <div className="alert-box alert-info">No tienes recetas activas en este momento.</div>}
-          {prescriptions.map(rx => (
+          {prescriptions.length === 0 ? (
+            <div className="empty-state" role="status">
+              <div className="empty-state-icon">💊</div>
+              <h3 className="empty-state-title">No tienes recetas activas</h3>
+              <p className="empty-state-text">
+                Cuando tu médico te recete medicación, aparecerá aquí con instrucciones claras y sencillas.
+              </p>
+            </div>
+          ) : (
+            <>
+              {prescriptions.map(rx => (
             <div key={rx.id} className="card">
               <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
                 <div>
@@ -343,12 +457,12 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
               )}
             </div>
           ))}
-          {prescriptions.length > 0 && (
-            <div style={{ textAlign: "center" }}>
-              <button className="btn btn-ghost btn-sm" onClick={() => onTabChange("elena")}>
-                ¿Tienes dudas sobre tu medicación? Pregúntale a Elena 👩‍⚕️
-              </button>
-            </div>
+          <div style={{ textAlign: "center", marginTop: 16 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => onTabChange("elena")}>
+              ¿Tienes dudas sobre tu medicación? Pregúntale a Elena 👩‍⚕️
+            </button>
+          </div>
+          </>
           )}
         </div>
       )}
@@ -376,6 +490,8 @@ export default function PatientDashboard({ activeTab, onTabChange }: PatientDash
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

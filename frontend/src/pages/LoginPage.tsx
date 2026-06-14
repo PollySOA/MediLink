@@ -29,6 +29,19 @@ export default function LoginPage() {
     setPassword("demo1234")
   }
 
+  const doctors = [
+    { label: "Dr. Carlos García (Traumatología)", u: "dr.garcia" },
+    { label: "Dra. Ana López (Interna)", u: "dr.lopez" },
+  ]
+  
+  const patients = [
+    { label: "Carolina R. (paciente rodilla)", u: "alejandro.m" },
+    { label: "Carmen R. (cardiología)", u: "carmen.r" },
+    { label: "Rosa F. (neumología)", u: "rosa.f" },
+    { label: "Miguel D. (cardiología)", u: "miguel.d" },
+    { label: "Isabel M. (neurología)", u: "isabel.m" },
+  ]
+
   return (
     <div className="login-screen">
       <div className="login-card">
@@ -39,34 +52,92 @@ export default function LoginPage() {
           <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>I Hackathon IABiomed · Reto Idonia</p>
         </div>
 
-        <form onSubmit={handleLogin} className="stack">
+        <form onSubmit={handleLogin} className="stack" aria-label="Formulario de login">
           <div>
-            <label>Usuario</label>
-            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="dr.garcia o un usuario demo" required />
+            <label htmlFor="username">Usuario</label>
+            <input 
+              id="username"
+              value={username} 
+              onChange={e => setUsername(e.target.value)} 
+              placeholder="ej: dr.garcia" 
+              required 
+              aria-required="true"
+              aria-describedby="username-help"
+            />
+            <p id="username-help" className="hint" style={{ fontSize: 12, marginTop: 4 }}>Selecciona un nombre de la lista debajo</p>
           </div>
           <div>
-            <label>Contraseña</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="demo1234" required />
+            <label htmlFor="password">Contraseña</label>
+            <input 
+              id="password"
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              placeholder="demo1234" 
+              required 
+              aria-required="true"
+            />
           </div>
-          {error && <p className="error-msg">{error}</p>}
-          <button className="btn btn-primary" type="submit" disabled={loading} style={{ width: "100%", justifyContent: "center", padding: "10px" }}>
+          {error && <p className="error-msg" role="alert">{error}</p>}
+          <button 
+            className="btn btn-primary" 
+            type="submit" 
+            disabled={loading} 
+            style={{ width: "100%", justifyContent: "center", padding: "12px" }}
+            aria-label={loading ? "Iniciando sesión" : "Acceder a MediLink"}
+          >
             {loading ? "Entrando..." : "Acceder"}
           </button>
         </form>
 
-        <div className="demo-hint">
-          <p style={{ marginBottom: 8 }}><strong>Cuentas de demo</strong> (contraseña: demo1234)</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {[
-              { label: "Dr. Carlos García (Traumatología)", u: "dr.garcia" },
-              { label: "Dra. Ana López (Interna)", u: "dr.lopez" },
-              { label: "Carolina R. (paciente rodilla)", u: "alejandro.m" },
-              { label: "Carmen R. (paciente cardiología)", u: "carmen.r" },
-              { label: "Rosa F. (paciente neumología)", u: "rosa.f" },
-              { label: "Miguel D. (paciente cardiología)", u: "miguel.d" },
-              { label: "Isabel M. (paciente neurología)", u: "isabel.m" },
-            ].map(({ label, u }) => (
-              <button key={u} onClick={() => fillDemo(u)} style={{ background: "none", border: "none", textAlign: "left", cursor: "pointer", padding: "2px 0", fontSize: 12, color: "#1a56db" }}>
+        <div className="demo-hint" role="region" aria-label="Cuentas de demostración">
+          <p style={{ marginBottom: 8 }}><strong>🏥 Médicos</strong> (contraseña: demo1234)</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+            {doctors.map(({ label, u }) => (
+              <button 
+                key={u} 
+                onClick={() => fillDemo(u)} 
+                style={{ 
+                  background: "none", 
+                  border: "1px solid #e5e7eb",
+                  textAlign: "left", 
+                  cursor: "pointer", 
+                  padding: "8px 10px",
+                  fontSize: 14, 
+                  color: "#1a56db",
+                  borderRadius: "6px",
+                  transition: "background 0.12s"
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#ebf5ff")}
+                onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                aria-label={`Acceder como ${label}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          
+          <p style={{ marginBottom: 8 }}><strong>👤 Pacientes</strong> (contraseña: demo1234)</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {patients.map(({ label, u }) => (
+              <button 
+                key={u} 
+                onClick={() => fillDemo(u)} 
+                style={{ 
+                  background: "none", 
+                  border: "1px solid #e5e7eb",
+                  textAlign: "left", 
+                  cursor: "pointer", 
+                  padding: "8px 10px",
+                  fontSize: 14, 
+                  color: "#1a56db",
+                  borderRadius: "6px",
+                  transition: "background 0.12s"
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "#ecfeff")}
+                onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                aria-label={`Acceder como ${label}`}
+              >
                 {label}
               </button>
             ))}
