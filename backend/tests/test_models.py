@@ -60,12 +60,12 @@ def test_avatar_message_response_structure():
     from models.schemas import AvatarMessageResponse
     
     response = AvatarMessageResponse(
-        justificacion_seguridad="Orientación general sin sustituir consejo médico.",
-        respuesta_voz="Hola, soy Elena. Te acompaño a entender mejor tu informe.",
+        justificacion_seguridad="Respuesta basada en el informe clínico del paciente.",
+        respuesta_voz="Hola Carolina, estoy aquí para ayudarte.",
     )
     
-    assert "Orientación general" in response.justificacion_seguridad
-    assert "Hola, soy Elena" in response.respuesta_voz
+    assert response.justificacion_seguridad == "Respuesta basada en el informe clínico del paciente."
+    assert response.respuesta_voz == "Hola Carolina, estoy aquí para ayudarte."
 
 
 def test_prescription_schema():
@@ -96,16 +96,17 @@ def test_idonia_access_response():
     from models.schemas import IdoniaAccessResponse
     
     response = IdoniaAccessResponse(
-        status="ok",
+        magic_link_url="https://idonia.com/viewer?token=abc123",
+        status="completed",
         file_id="file123",
         open_path="/viewer/doc",
         resource="report",
         created_at="2026-06-14T10:00:00",
     )
     
+    assert "idonia.com" in response.magic_link_url
+    assert response.status == "completed"
     assert response.resource == "report"
-    assert response.status == "ok"
-    assert response.file_id == "file123"
 
 
 def test_error_response_schema():
@@ -115,7 +116,7 @@ def test_error_response_schema():
     error = ErrorResponse(
         code="validation_error",
         message="Invalid patient ID format",
-        trace_id="trace-123",
+        trace_id="abc123",
     )
     
     assert error.code == "validation_error"

@@ -15,7 +15,7 @@ def test_root_endpoint(test_client):
 
 
 def test_demo_info_endpoint(test_client):
-    """Test demo info endpoint."""
+    """Test demo flow endpoint."""
     response = test_client.get("/api/demo/flow")
     
     assert response.status_code == 200
@@ -123,7 +123,7 @@ def test_cors_headers(test_client):
         headers={
             "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "POST",
-        },
+        }
     )
     
     # OPTIONS request for CORS preflight
