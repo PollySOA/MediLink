@@ -19,6 +19,15 @@ os.environ.setdefault("RECOG_STRICT_MODE", "true")
 os.environ.setdefault("JWT_SECRET", "test-secret-key")
 
 
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    """Clear lru_cache for get_settings() before each test to reload env vars."""
+    from config import get_settings
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def test_client():
     """FastAPI test client fixture."""
@@ -77,7 +86,9 @@ def auth_token_doctor():
         "name": "Dr. Carlos García",
         "exp": datetime.utcnow() + timedelta(hours=24),
     }
-    return jwt.encode(payload, "test-secret-key", algorithm="HS256")
+    # Use same secret as JWT_SECRET env var set in conftest
+    secret = os.environ.get("JWT_SECRET", "test-secret-key")
+    return jwt.encode(payload, secret, algorithm="HS256")
 
 
 @pytest.fixture
@@ -93,4 +104,6 @@ def auth_token_patient():
         "patient_id": "PAT-001",
         "exp": datetime.utcnow() + timedelta(hours=24),
     }
-    return jwt.encode(payload, "test-secret-key", algorithm="HS256")
+    # Use same secret as JWT_SECRET env var set in conftest
+    secret = os.environ.get("JWT_SECRET", "test-secret-key")
+    return jwt.encode(payload, secret, algorithm="HS256")
