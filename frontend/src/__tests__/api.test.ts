@@ -1,6 +1,8 @@
 /**
  * Tests for API service module
  */
+import * as AuthContextModule from '../context/AuthContext';
+import * as types from '../types';
 
 describe('API Service', () => {
   it('should be testable', () => {
@@ -17,14 +19,12 @@ describe('API Service', () => {
 
 describe('AuthContext', () => {
   it('should be importable', () => {
-    const { AuthProvider } = require('../context/AuthContext');
-    expect(AuthProvider).toBeDefined();
+    expect(AuthContextModule.AuthProvider).toBeDefined();
   });
 });
 
 describe('Types', () => {
   it('types module should be importable', () => {
-    const types = require('../types');
     expect(types).toBeDefined();
   });
 });
